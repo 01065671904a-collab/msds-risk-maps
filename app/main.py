@@ -9,11 +9,19 @@ import pytesseract
 import requests
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from PIL import Image
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-app = FastAPI(title="MSDS 경량 조회 웹서버")
+app = FastAPI(title="MSDS 유해화학물질 통합관리")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 BASE_API = "https://apis.data.go.kr/B552468/msdschem1"
@@ -147,8 +155,7 @@ def parse_kosha_web(cas: str) -> dict:
                     if c and c != cas and not CAS_RE.fullmatch(c) and len(c) >= 2:
                         info["chem_name"] = clean_name(c)
                         break
-                a = tr.find("a", href=True)
-                if a and info["chem_name"]:
+                if info["chem_name"]:
                     break
         return info
     except Exception:
@@ -156,11 +163,6 @@ def parse_kosha_web(cas: str) -> dict:
 
 
 def parse_twa_values(combined_text: str) -> tuple[str, str]:
-    """
-    노출기준 문자열에서 TWA 값을 추출해 (twa_ppm, twa_mg)로 반환합니다.
-    - ppm 단위면 twa_ppm에만 숫자만 넣고 twa_mg는 ""
-    - mg 단위(mg/m3, mg/㎥, ㎎/㎥ 등)면 twa_mg에만 숫자만 넣고 twa_ppm은 ""
-    """
     ppm_match = re.search(
         r"(?:TWA\s*[:：-]?\s*)?([0-9]+(?:\.[0-9]+)?)\s*ppm\b",
         combined_text,
@@ -220,10 +222,6 @@ def parse_cmr(combined_text: str, h_codes_str: str) -> tuple[str, str, str]:
 
 
 def parse_boiling_point(combined_text: str) -> str:
-    """
-    초기 끓는점 또는 끓는점 범위에서 단위(℃, °C 등)를 뗀 숫자만 반환.
-    범위(예: 337~340 ℃)면 최소값(337)만 반환.
-    """
     bp_segments = []
     for m in re.finditer(r"(?:초기\s*끓는점|끓는점\s*범위|초기끓는점|끓는점|boiling\s*point)", combined_text, re.I):
         bp_segments.append(combined_text[m.start() : min(len(combined_text), m.end() + 60)])
@@ -257,7 +255,7 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return JSONResponse(content={"status": "ok"})
+    return JSONResponse(content={"ok": True, "kosha_key_configured": bool(SERVICE_KEY)})
 
 
 @app.post("/api/extract")
@@ -284,12 +282,9 @@ def lookup_cas(cas: str):
     blobs.extend(flatten_strings(listing))
 
     chem_id = ""
-    for k in ["chemId", "chemID", "chemicalId", "화학물질ID"]:
-        for s in flatten_strings(listing):
-            if re.fullmatch(r"[A-Za-z0-9_-]{4,30}", s) and s != cas:
-                chem_id = s
-                break
-        if chem_id:
+    for s in flatten_strings(listing):
+        if re.fullmatch(r"[A-Za-z0-9_-]{4,30}", s) and s != cas:
+            chem_id = s
             break
 
     if chem_id:
@@ -308,8 +303,6 @@ def lookup_cas(cas: str):
     twa_ppm, twa_mg = parse_twa_values(combined_text)
     h_codes, h_grade = parse_h_codes_and_grade(combined_text)
     cmr_c, cmr_m, cmr_r = parse_cmr(combined_text, h_codes)
-
-    # 끓는점은 TWA(ppm)값 항목에 값이 있는 경우에만 조회 및 출력
     boiling_point = parse_boiling_point(combined_text) if twa_ppm.strip() else ""
 
     return JSONResponse(content={
@@ -324,3 +317,98 @@ def lookup_cas(cas: str):
         "cmr_r": cmr_r,
         "boiling_point": boiling_point,
     })
+
+
+EXPORT_HEADERS = [
+    "공정명",
+    "제품명",
+    "원본 MSDS 물질명",
+    "화학물질명(필수)",
+    "CAS번호",
+    "TWA(ppm)값",
+    "TWA(mg)값",
+    "H-CODE값",
+    "H-CODE등급",
+    "CMR_C값",
+    "CMR_M값",
+    "CMR_R값",
+    "끓는점",
+]
+
+EXPORT_KEYS = [
+    "process",
+    "product",
+    "original_name",
+    "chem_name",
+    "cas",
+    "twa_ppm",
+    "twa_mg",
+    "h_code",
+    "h_grade",
+    "cmr_c",
+    "cmr_m",
+    "cmr_r",
+    "boiling_point",
+]
+
+
+@app.post("/api/export/xlsx")
+async def export_xlsx(payload: dict):
+    rows = (payload or {}).get("rows", [])
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "MSDS 조회결과"
+    ws.append(EXPORT_HEADERS)
+    for r in rows:
+        ws.append([str((r or {}).get(k, "") or "") for k in EXPORT_KEYS])
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="18384B")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+    for col in ws.columns:
+        letter = col[0].column_letter
+        ws.column_dimensions[letter].width = min(max(max(len(str(c.value or "")) for c in col) + 2, 12), 36)
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return StreamingResponse(
+        bio,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=msds_result.xlsx"},
+    )
+
+
+@app.post("/api/export/pdf")
+async def export_pdf(payload: dict):
+    rows = (payload or {}).get("rows", [])
+    bio = io.BytesIO()
+    doc = SimpleDocTemplate(bio, pagesize=landscape(A4), rightMargin=18, leftMargin=18, topMargin=20, bottomMargin=20)
+    styles = getSampleStyleSheet()
+    font_name = "Helvetica"
+    for path in ["/usr/share/fonts/truetype/nanum/NanumGothic.ttf", "/usr/share/fonts/truetype/nanum/NanumGothicCoding.ttf"]:
+        if os.path.exists(path):
+            pdfmetrics.registerFont(TTFont("Korean", path))
+            font_name = "Korean"
+            break
+    style = ParagraphStyle("cell", parent=styles["BodyText"], fontName=font_name, fontSize=7, leading=8)
+    data = [[Paragraph(h, style) for h in EXPORT_HEADERS]]
+    for r in rows:
+        data.append([
+            Paragraph(str((r or {}).get(k, "") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), style)
+            for k in EXPORT_KEYS
+        ])
+    widths = [55, 60, 95, 95, 58, 48, 48, 65, 45, 42, 42, 48, 45]
+    t = Table(data, colWidths=widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#18384B")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    doc.build([Paragraph("MSDS 유해화학물질 조회 결과", styles["Title"]), Spacer(1, 8), t])
+    bio.seek(0)
+    return StreamingResponse(
+        bio,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=msds_result.pdf"},
+    )
