@@ -309,7 +309,12 @@ def parse_boiling_point(combined_text: str) -> str:
             deg_m = re.search(r"℃", after)
             if not deg_m:
                 continue
+            # 라벨과 '℃' 사이가 너무 길거나 중간에 다른 항목명이 끼면 공통 문구/오탐으로 간주
+            if deg_m.start() > 45:
+                continue
             segment = after[: deg_m.start()]
+            if re.search(r"(?:인화점|발화점|자연발화|녹는점|어는점|증기압|출처|※|구분)", segment):
+                continue
 
             range_m = re.search(
                 r"(-?\d+(?:\.\d+)?)\s*(?:~|-|–|—|to)\s*(-?\d+(?:\.\d+)?)",
