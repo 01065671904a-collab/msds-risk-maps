@@ -418,26 +418,60 @@ def section_three(text):
     if starts:
         start = min(starts)
         tail = text[start:]
-        end = re.search(r"\n\s*4\s*[.\-]\s*(응급조치|First[- ]aid)", tail, re.I)
-        return tail[: end.start()] if end else tail[:16000]
+        end = re.search(r"(?:^|\n|\s)4\s*[.\-]\s*(?:응급조치|First[- ]aid)", tail, re.I)
+        return tail[: end.start()] if end else tail[:18000]
     return text
 
 
 def parse_ingredients(text):
     sec = section_three(text)
-    lines = [re.sub(r"\s+", " ", x).strip() for x in sec.splitlines() if x.strip()]
+    raw_lines = [re.sub(r"\s+", " ", x).strip() for x in sec.splitlines() if x.strip()]
+    # 빈 줄이나 파이프(|) 구분 블록을 기준으로 성분 행을 묶기
+    grouped_rows = []
+    buf = []
+    for line in raw_lines:
+        if CAS_RE.search(line):
+            prev_line = raw_lines[len(grouped_rows)] if False else ""
+            grouped_rows.append((line, prev_line))
+    lines = raw_lines
     found = []
     for i, line in enumerate(lines):
         for m in CAS_RE.finditer(line):
             cas = m.group(1)
-            row = " ".join(lines[max(0, i - 2) : min(len(lines), i + 3)])
+            # 앞뒤 줄 중 CAS가 없는 인접 줄들만 조합해 다른 성분의 이름/함유량이 섞이지 않도록 함
+            window_parts = []
+            for j in range(max(0, i - 3), min(len(lines), i + 3)):
+                if j != i and CAS_RE.search(lines[j]):
+                    continue
+                if any(h in lines[j] for h in ["3. 구성성분", "4. 응급조치", "관용명", "식별번호"]):
+                    continue
+                window_parts.append(lines[j])
+            row = " | ".join(window_parts + [line]) if window_parts else line
+
             pct = ""
+            # 1) '%'가 붙은 함유량 우선 탐색
             pm = re.search(r"(\d+(?:\.\d+)?\s*(?:~|[-–]\s*)?\s*\d*(?:\.\d+)?\s*%)", row)
             if pm:
-                pct = pm.group(1)
-            clean = row.replace(cas, " ")
-            clean = re.sub(r"\s+", " ", clean).strip(" |,:;")
-            clean = re.sub(r"(화학물질명|물질명|CAS\s*No\.?|함유량|중량\s*%)", "", clean, flags=re.I).strip()
+                pct = pm.group(1).strip()
+            else:
+                # 2) '%' 기호가 생략된 표(예: | 30~40 또는 | 30 40) 끝부분 범위/숫자 탐색
+                tail_part = line[m.end():]
+                pm2 = re.search(r"(\d+(?:\.\d+)?\s*(?:~|[-–]|\s+)\s*\d+(?:\.\d+)?)\s*$", tail_part.strip())
+                if pm2:
+                    pct = re.sub(r"\s+", "~", pm2.group(1).strip()) + "%"
+
+            # 물질명 추출: 파이프(|)로 나뉜 컬럼 중 첫 번째 의미 있는 물질명 컬럼 우선
+            cols_split = [c.strip() for c in line[:m.start()].split("|") if c.strip()]
+            name_candidate = ""
+            if cols_split:
+                name_candidate = cols_split[0]
+            else:
+                prev_cols = [c.strip() for c in " ".join(window_parts).split("|") if c.strip()]
+                name_candidate = prev_cols[0] if prev_cols else line[:m.start()]
+
+            clean = re.sub(r"/\s*KE-\d+", "", name_candidate, flags=re.I)
+            clean = re.sub(r"^(?:화학물질명|물질명|관용명\s*및\s*이명(?:\(異名\))?|CAS\s*번호\s*또는\s*식별번호|함유량\s*\(?%?\)?)[\s|:.-]*", "", clean, flags=re.I)
+            clean = re.sub(r"\s+", " ", clean).strip(" |,:;-/")
             name = clean[:160] if clean else "미확인"
             item = {
                 "selected": True,
