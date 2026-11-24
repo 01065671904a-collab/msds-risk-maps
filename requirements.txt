@@ -6,3 +6,5 @@ beautifulsoup4
 PyMuPDF
 pytesseract
 Pillow
+openpyxl
+reportlab
