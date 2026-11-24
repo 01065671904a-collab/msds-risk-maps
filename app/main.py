@@ -134,3 +134,10 @@ def protect_public_kosha_request(client_ip, cas):
     with _CACHE_LOCK:
         if cas in _CACHE:
             return _CACHE[cas]
+        if _DAILY_LOOKUPS["count"] >= MAX_NEW_CAS_LOOKUPS_PER_DAY:
+            raise HTTPException(429, "오늘의 공개 KOSHA 조회 한도에 도달했습니다. 내일 다시 이용해 주세요.")
+        _DAILY_LOOKUPS["count"] += 1
+    return None
+
+
+def find_values(obj, keys
