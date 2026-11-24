@@ -39,7 +39,7 @@ H_LEVEL = {
     "H315": 1, "H319": 1, "H320": 1, "H335": 1, "H336": 1,
 }
 
-NOISE_TOKENS = {"00", "NORMAL SERVICE.", "NORMAL SERVICE", "NULL", "NONE", "-", "자료없음", "해당없음", "N/A"}
+NOISE_TOKENS = {"00", "NORMAL SERVICE.", "NORMAL SERVICE", "NULL", "NONE", "-", "N/A"}
 
 
 def xml_dict(node):
@@ -74,11 +74,13 @@ def flatten_text(obj):
     return vals
 
 
-def clean_values(vals):
+def clean_values(vals, allow_no_data=False):
     out = []
     for v in vals:
         s = re.sub(r"\s+", " ", str(v or "")).strip()
         if not s or s.upper() in NOISE_TOKENS:
+            continue
+        if not allow_no_data and s in ("자료없음", "해당없음"):
             continue
         out.append(s)
     return list(dict.fromkeys(out))
@@ -151,131 +153,194 @@ def find_values(obj, keys):
     return found
 
 
-def first_value(obj, keys):
-    vals = clean_values(find_values(obj, keys))
+def first_value(obj, keys, allow_no_data=False):
+    vals = clean_values(find_values(obj, keys), allow_no_data=allow_no_data)
     return " / ".join(vals)
 
 
-def extract_exposure_text(detail_obj):
-    """국내규정 중 TWA, STEL, C(최고노출기준) 값만 추출합니다. 없으면 '미확인'을 반환합니다."""
-    items = []
-
-    def is_c_label(text):
-        return bool(
-            re.search(r"(?<![A-Z0-9])C(?![A-Z0-9])", text, re.I)
-            or re.search(r"\bCEILING\b", text, re.I)
-            or ("최고노출기준" in text)
-        )
-
-    def normalize_part(part):
-        s = re.sub(r"\s+", " ", str(part or "")).strip()
-        if not s or s.upper() in NOISE_TOKENS:
-            return None
-        if re.fullmatch(r"(?i)(twa|stel|ceiling|c|최고노출기준):?\s*[-:]?", s):
-            return None
-        return s
-
-    def walk(node):
+def extract_chem_name(listing, detail01, detail03, cas):
+    """KOSHA 검색 결과에서 물질명(국문명 우선)을 정확히 추출합니다."""
+    candidate_keys = [
+        "chemNameKor", "chemNmKor", "chemName", "chemNm", "chemicalName",
+        "msdsName", "prdtNm", "물질명", "화학물질명", "국문명", "제품명"
+    ]
+    # 1. listing items 중 CAS가 일치하는 항목 우선 탐색
+    def search_items(node):
         if isinstance(node, dict):
-            subtree_text = " ".join(flatten_text(node))
-            has_relevant_hint = (
-                bool(re.search(r"\b(TWA|STEL|CEILING)\b", subtree_text, re.I))
-                or bool(re.search(r"(?<![A-Z0-9])C(?![A-Z0-9])", subtree_text, re.I))
-                or any(k in str(key) for key in node.keys() for k in ["국내규정", "노출기준", "최고"])
-            )
-
-            if has_relevant_hint:
-                for k, v in node.items():
-                    k_str = re.sub(r"\s+", " ", str(k or "")).strip()
-                    v_clean = " / ".join(clean_values(flatten_text(v)))
-                    if not v_clean:
-                        continue
-                    k_upper = k_str.upper()
-
-                    if "TWA" in k_upper and "STEL" not in k_upper:
-                        val = v_clean if v_clean.upper().startswith("TWA") else f"TWA: {v_clean}"
-                        norm = normalize_part(val)
-                        if norm:
-                            items.append(norm)
-                    elif "STEL" in k_upper and "TWA" not in k_upper:
-                        val = v_clean if v_clean.upper().startswith("STEL") else f"STEL: {v_clean}"
-                        norm = normalize_part(val)
-                        if norm:
-                            items.append(norm)
-                    elif is_c_label(k_str):
-                        if re.fullmatch(r"(?i)c|ceiling|최고노출기준", k_str):
-                            val = f"C: {v_clean}"
-                        else:
-                            val = v_clean
-                        norm = normalize_part(val)
-                        if norm:
-                            items.append(norm)
-                    elif any(tag in k_str for tag in ["국내규정", "노출기준"]):
-                        for line in re.split(r"[/\n;|]+", v_clean):
-                            norm = normalize_part(line)
-                            if norm and (
-                                re.search(r"\b(TWA|STEL|CEILING)\b", norm, re.I)
-                                or is_c_label(norm)
-                            ):
-                                items.append(norm)
-
+            vals_str = " ".join(flatten_text(node))
+            if cas in vals_str:
+                for k in candidate_keys:
+                    for nk, nv in node.items():
+                        if nk.lower() == k.lower():
+                            c = clean_values(flatten_text(nv))
+                            for item in c:
+                                if item != cas and not CAS_RE.fullmatch(item):
+                                    return item
             for v in node.values():
-                walk(v)
-
+                res = search_items(v)
+                if res:
+                    return res
         elif isinstance(node, list):
             for v in node:
-                walk(v)
+                res = search_items(v)
+                if res:
+                    return res
+        return None
 
-        elif node is not None:
-            s = re.sub(r"\s+", " ", str(node)).strip()
-            if s and s.upper() not in NOISE_TOKENS:
-                for part in re.split(r"[/\n;|]+", s):
-                    norm = normalize_part(part)
-                    if norm and (
-                        re.search(r"\b(TWA|STEL|CEILING)\b", norm, re.I)
-                        or is_c_label(norm)
-                    ):
-                        items.append(norm)
+    for src in (listing, detail01, detail03):
+        hit = search_items(src)
+        if hit:
+            return hit
 
-    walk(detail_obj)
+    for src in (listing, detail01, detail03):
+        vals = clean_values(find_values(src, candidate_keys))
+        for v in vals:
+            if v != cas and not CAS_RE.fullmatch(v) and "MSDS" not in v.upper():
+                return v
 
-    cleaned_items = []
-    seen = set()
-    for it in items:
-        norm = normalize_part(it)
-        if not norm:
-            continue
-        key = norm.upper()
-        if key not in seen:
-            seen.add(key)
-            cleaned_items.append(norm)
+    # 011 상세의 "가. 제품명" 항목 구조 대응 (itemDetail / msdsItemDetail 등)
+    def search_label_value(node):
+        if isinstance(node, dict):
+            flat = clean_values(flatten_text(node))
+            for idx, txt in enumerate(flat):
+                if any(lbl in txt for lbl in ["제품명", "화학물질명", "물질명"]) and idx + 1 < len(flat):
+                    nxt = flat[idx + 1]
+                    if nxt != cas and not CAS_RE.fullmatch(nxt):
+                        return nxt
+            for v in node.values():
+                res = search_label_value(v)
+                if res:
+                    return res
+        elif isinstance(node, list):
+            for v in node:
+                res = search_label_value(v)
+                if res:
+                    return res
+        return None
 
-    def sort_key(text):
-        u = text.upper()
-        if "TWA" in u:
-            return 0
-        if "STEL" in u:
-            return 1
-        if is_c_label(text):
-            return 2
-        return 3
+    for src in (detail01, detail03):
+        hit = search_label_value(src)
+        if hit:
+            return hit
 
-    cleaned_items.sort(key=sort_key)
-    return " / ".join(cleaned_items) if cleaned_items else "미확인"
+    return "미확인"
+
+
+def extract_exposure_text(detail_obj):
+    """국내규정에서 TWA, STEL, C 값만 추출합니다. ACGIH/OSHA 등 국외기준은 제외하고 국내규정 첫 유효값만 사용합니다."""
+    domestic_texts = []
+
+    def collect_domestic(node):
+        if isinstance(node, dict):
+            flat = clean_values(flatten_text(node))
+            joined = " ".join(flat)
+            if "국내규정" in joined:
+                # 국내규정 항목과 그 형제/하위 값 수집
+                for idx, txt in enumerate(flat):
+                    if "국내규정" in txt:
+                        domestic_texts.extend(flat[idx : idx + 4])
+                return
+            for k, v in node.items():
+                if "국내규정" in str(k):
+                    domestic_texts.extend(clean_values(flatten_text(v)))
+                else:
+                    collect_domestic(v)
+        elif isinstance(node, list):
+            for v in node:
+                collect_domestic(v)
+
+    collect_domestic(detail_obj)
+    source_texts = domestic_texts if domestic_texts else clean_values(flatten_text(detail_obj))
+
+    # 해외 기준(ACGIH, OSHA, NIOSH 등) 구간 이전까지만 자르기
+    filtered_chunks = []
+    for t in source_texts:
+        if any(foreign in t.upper() for foreign in ["ACGIH", "OSHA", "NIOSH", "국외규정", "생물학적 노출기준"]):
+            break
+        filtered_chunks.append(t)
+
+    combined = " \n ".join(filtered_chunks)
+    if not combined or "자료없음" in combined and not re.search(r"(TWA|STEL|CEILING|(?<![A-Z])C(?![A-Z]))", combined, re.I):
+        return "미확인"
+
+    # 국내규정 텍스트에서 TWA, STEL, C 각각의 첫 번째 수치+단위(ppm 또는 mg/m3)만 깔끔하게 추출
+    found = {}
+    patterns = [
+        ("TWA", r"TWA\s*[:：-]?\s*([0-9]+(?:\.[0-9]+)?\s*(?:ppm|mg/m3|mg/㎥|㎎/㎥))"),
+        ("STEL", r"STEL\s*[:：-]?\s*([0-9]+(?:\.[0-9]+)?\s*(?:ppm|mg/m3|mg/㎥|㎎/㎥))"),
+        ("C", r"(?:(?<![A-Z0-9])C|CEILING|최고노출기준)\s*[:：-]?\s*([0-9]+(?:\.[0-9]+)?\s*(?:ppm|mg/m3|mg/㎥|㎎/㎥))"),
+    ]
+    for label, pat in patterns:
+        m = re.search(pat, combined, re.I)
+        if m:
+            val = re.sub(r"\s+", "", m.group(1))
+            val = val.replace("mg/m3", "mg/㎥").replace("㎎/㎥", "mg/㎥")
+            found[label] = f"{label} : {val}"
+
+    ordered = [found[k] for k in ["TWA", "STEL", "C"] if k in found]
+    return " / ".join(ordered) if ordered else "미확인"
 
 
 def extract_boiling_text(detail_obj):
-    preferred = clean_values(
-        find_values(
-            detail_obj,
-            ["초기 끓는점과 끓는점 범위", "끓는점", "초기끓는점", "boilingPoint", "initialBoilingPoint", "끓는점/비점"],
-        )
+    """
+    끓는점 추출 규칙:
+    1) '자료없음'이면 '자료없음' 반환
+    2) 범위(예: 140~150℃)이면 최소값(140)만 반환
+    3) ℃ 앞 숫자만 추출 (단위 제외)
+    4) 0℃ 미만(음수, 예: -2℃)이면 '미확인' 반환
+    """
+    bp_texts = []
+
+    def collect_bp(node):
+        if isinstance(node, dict):
+            flat = clean_values(flatten_text(node), allow_no_data=True)
+            for idx, txt in enumerate(flat):
+                if any(k in txt for k in ["초기 끓는점", "끓는점 범위", "끓는점", "초기끓는점"]):
+                    bp_texts.extend(flat[idx : idx + 3])
+                    return
+            for k, v in node.items():
+                if any(tag in str(k).lower() for tag in ["끓는점", "boiling"]):
+                    bp_texts.extend(clean_values(flatten_text(v), allow_no_data=True))
+                else:
+                    collect_bp(v)
+        elif isinstance(node, list):
+            for v in node:
+                collect_bp(v)
+
+    collect_bp(detail_obj)
+    if not bp_texts:
+        bp_texts = clean_values(flatten_text(detail_obj), allow_no_data=True)
+
+    joined = " ".join(bp_texts)
+    if not joined:
+        return "미확인"
+
+    # 범위 패턴 우선 탐색 (예: 140~150℃, 159.5 ~ 160 °C, -5~10℃)
+    range_m = re.search(
+        r"(-?\d+(?:\.\d+)?)\s*(?:~|-|–|to)\s*(-?\d+(?:\.\d+)?)\s*(?:°\s*C|℃)",
+        joined,
+        re.I,
     )
-    if preferred:
-        return " / ".join(preferred)
-    all_vals = clean_values(flatten_text(detail_obj))
-    bp_hits = [x for x in all_vals if any(k in x for k in ["끓는점", "비점", "°C", "℃", "沸点"])]
-    return " / ".join(bp_hits[:5]) or "미확인"
+    if range_m:
+        v1 = float(range_m.group(1))
+        v2 = float(range_m.group(2))
+        low = min(v1, v2)
+        if low < 0:
+            return "미확인"
+        return str(int(low)) if low.is_integer() else str(low)
+
+    # 단일 온도 패턴 탐색 (예: 56.1 ℃, 235 ℃)
+    single_m = re.search(r"(-?\d+(?:\.\d+)?)\s*(?:°\s*C|℃)", joined, re.I)
+    if single_m:
+        val = float(single_m.group(1))
+        if val < 0:
+            return "미확인"
+        return str(int(val)) if val.is_integer() else str(val)
+
+    if "자료없음" in joined:
+        return "자료없음"
+
+    return "미확인"
 
 
 def industrial_safety_law_text(obj):
@@ -376,8 +441,8 @@ def parse_ingredients(text):
             name = clean[:160] if clean else "미확인"
             item = {
                 "selected": True,
-                "product": "",
                 "process": "",
+                "product": "",
                 "original_name": name,
                 "cas": cas,
                 "content": pct or "미확인",
@@ -453,7 +518,6 @@ def kosha_lookup(cas: str, request: Request):
         return cached
     listing = api_get("getChemList001", {"searchWrd": cas, "searchCnd": "1", "numOfRows": "20", "pageNo": "1"})
     chem_id = first_value(listing, ["chemId", "chemID", "chemicalId", "화학물질ID"])
-    chem_name = first_value(listing, ["chemName", "chemNm", "chemicalName", "화학물질명", "국문명"])
     if not chem_id:
         raw = " ".join(clean_values(flatten_text(listing)))
         result = {
@@ -491,6 +555,8 @@ def kosha_lookup(cas: str, request: Request):
         except Exception as e:
             details[code] = {"error": str(e)}
 
+    chem_name = extract_chem_name(listing, details.get("product", {}), details.get("ingredients", {}), cas)
+
     hazard_text = " ".join(flatten_text(details.get("hazard", {})))
     hcodes = sorted(set(H_RE.findall(hazard_text)))
     level = max([H_LEVEL.get(x, 0) for x in hcodes], default=0)
@@ -506,9 +572,6 @@ def kosha_lookup(cas: str, request: Request):
         cmr.append("발암성(구분 확인 필요)")
     if any(x in hcodes for x in ["H360", "H361", "H362"]):
         cmr.append("생식독성(구분 확인 필요)")
-
-    if not chem_name:
-        chem_name = first_value(details.get("product", {}), ["chemName", "chemNm", "chemicalName", "화학물질명", "국문명", "제품명"])
 
     reg_text = industrial_safety_law_text(details.get("regulation", {}))[:4000] or "미확인"
     flags = infer_law_flags(reg_text, details.get("regulation", {}))
@@ -550,13 +613,13 @@ async def export_xlsx(payload: dict):
     ws = wb.active
     ws.title = "MSDS 통합관리"
     headers = [
-        "제품명", "공정명", "원본 MSDS 물질명", "KOSHA 조회 물질명", "CAS No.", "함유량", "CMR 분류",
+        "공정명", "제품명", "원본 MSDS 물질명", "KOSHA 조회 물질명", "CAS No.", "함유량", "CMR 분류",
         "노출기준", "끓는점 (℃)", "작업환경측정 대상", "특수건강진단 대상", "관리대상유해물질",
         "특별관리물질", "H-Code", "성분 위험등급", "KOSHA 조회상태", "산업안전보건법 규제사항",
     ]
     ws.append(headers)
     keys = [
-        "product", "process", "original_name", "kosha_name", "cas", "content", "cmr",
+        "process", "product", "original_name", "kosha_name", "cas", "content", "cmr",
         "exposure_limit", "boiling_point", "work_measurement", "special_health_exam", "managed_substance",
         "specially_managed", "h_codes", "grade", "kosha_status", "legal_basis",
     ]
@@ -599,13 +662,13 @@ async def export_pdf(payload: dict):
             break
     style = ParagraphStyle("small", parent=styles["BodyText"], fontName=font_name, fontSize=6, leading=7)
     headers = [
-        "제품명", "공정명", "원본 물질명", "KOSHA 물질명", "CAS No.", "함유량", "CMR", "노출기준",
+        "공정명", "제품명", "원본 물질명", "KOSHA 물질명", "CAS No.", "함유량", "CMR", "노출기준",
         "끓는점\n(℃)", "작업환경\n측정", "특수건강\n진단", "관리대상", "특별관리", "H-Code", "성분\n위험등급",
         "조회상태", "법령근거",
     ]
     data = [[Paragraph(x.replace("\n", "<br/>"), style) for x in headers]]
     keys = [
-        "product", "process", "original_name", "kosha_name", "cas", "content", "cmr",
+        "process", "product", "original_name", "kosha_name", "cas", "content", "cmr",
         "exposure_limit", "boiling_point", "work_measurement", "special_health_exam",
         "managed_substance", "specially_managed", "h_codes", "grade", "kosha_status", "legal_basis",
     ]
@@ -614,7 +677,7 @@ async def export_pdf(payload: dict):
             Paragraph(str(r.get(k, "") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), style)
             for k in keys
         ])
-    widths = [64, 54, 96, 96, 54, 44, 54, 66, 52, 42, 42, 42, 42, 50, 38, 58, 72]
+    widths = [54, 64, 96, 96, 54, 44, 54, 66, 52, 42, 42, 42, 42, 50, 38, 58, 72]
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(
         TableStyle([
