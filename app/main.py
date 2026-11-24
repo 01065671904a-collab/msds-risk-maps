@@ -132,4 +132,4 @@ def protect_public_kosha_request(client_ip, cas):
     if _DAILY_LOOKUPS["day"] != today:
         _DAILY_LOOKUPS.update({"day": today, "count": 0})
     with _CACHE_LOCK:
-        if cas in _
+        if cas in _CACHE:
