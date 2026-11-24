@@ -6,8 +6,10 @@
 <style>
 :root{--navy:#18384b;--teal:#167d78;--bg:#f3f6f8;--line:#dce4e9;--muted:#657580}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#20313b;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}
-header{background:var(--navy);color:white;padding:22px max(20px,calc((100% - 1440px)/2))}
-header h1{margin:0 0 5px;font-size:23px}header p{margin:0;color:#d5e1e8;font-size:13px}
+header{background:white;border-bottom:3px solid var(--navy);color:#20313b;padding:16px max(20px,calc((100% - 1440px)/2))}
+.header-inner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.header-title h1{margin:0 0 4px;font-size:22px;color:var(--navy)}.header-title p{margin:0;color:var(--muted);font-size:13px}
+.header-logo img{height:44px;width:auto;display:block;object-fit:contain}
 main{max-width:1440px;margin:22px auto;padding:0 18px}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 12px #24374608}
 h2{font-size:17px;margin:0 0 14px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 input,select,button{font:inherit;border-radius:8px;padding:10px;border:1px solid #cbd6dd;background:white}
@@ -15,15 +17,25 @@ input[type=file]{max-width:100%}button{cursor:pointer;background:var(--navy);col
 button:disabled{opacity:.5;cursor:not-allowed}.hint{font-size:12px;color:var(--muted);line-height:1.55}.status{margin-top:10px;font-size:13px;color:var(--teal);white-space:pre-wrap}
 .metrics{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.metric{background:#f2f6f8;border-radius:9px;padding:10px 14px;font-size:13px}
 .tablewrap{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:9px}
-table{border-collapse:collapse;width:100%;min-width:1600px;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
-th{background:#edf2f5;position:sticky;top:0;z-index:1;white-space:nowrap}td input,td select{width:100%;min-width:75px;padding:6px;font-size:11px;border-radius:5px}
-td .wide{min-width:140px}.tag{display:inline-block;padding:3px 7px;border-radius:20px;background:#edf4f4;color:#176c67;font-size:11px}
+table{border-collapse:collapse;width:100%;min-width:1700px;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
+th{background:#edf2f5;position:sticky;top:0;z-index:1;white-space:nowrap}td input,td select{width:100%;min-width:72px;padding:6px;font-size:11px;border-radius:5px}
+td .wide{min-width:140px}
 .warning{background:#fff8e9;border:1px solid #f1dfb8;border-radius:9px;padding:12px;font-size:12px;line-height:1.6}
 a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
-@media(max-width:700px){header h1{font-size:19px}.panel{padding:13px}.row>*{flex:1 1 100%}button{width:100%}}
+@media(max-width:700px){.header-title h1{font-size:19px}.header-logo img{height:34px}.panel{padding:13px}.row>*{flex:1 1 100%}button{width:100%}}
 </style></head>
 <body>
-<header><h1>MSDS 유해화학물질 통합관리</h1><p>로그인 없이 누구나 무료 이용 · MSDS PDF 분석 · CAS No. 기반 KOSHA 조회 · 제품별 위험정보 통합관리</p></header>
+<header>
+  <div class="header-inner">
+    <div class="header-title">
+      <h1>MSDS 유해화학물질 통합관리</h1>
+      <p>로그인 없이 누구나 무료 이용 · MSDS PDF 분석 · CAS No. 기반 KOSHA 조회 · 제품별 위험정보 통합관리</p>
+    </div>
+    <div class="header-logo">
+      <img src="/static/kiha_logo_horizontal.png" alt="대한산업보건협회 KOREAN INDUSTRIAL HEALTH ASSOCIATION">
+    </div>
+  </div>
+</header>
 <main>
 <section class="panel">
 <h2>1. 제품 등록 및 MSDS 분석</h2>
@@ -43,23 +55,23 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <button class="green" id="lookupAll">CAS 기준 KOSHA 조회</button><button class="secondary" id="addRow">성분 직접 추가</button>
 <button class="secondary" id="xlsx">엑셀 저장</button><button class="secondary" id="pdfout">PDF 저장</button><button class="secondary" id="backup">데이터 백업</button><button class="secondary" id="restore">백업 복원</button><input id="backupFile" type="file" accept="application/json,.json" hidden>
 </div></div>
-<p class="hint">위험등급은 제품에 속한 모든 구성성분의 H-Code를 기준표와 대조해 가장 높은 등급 하나만 제품별로 표시합니다. 물질명은 원본 MSDS와 KOSHA 조회명을 분리합니다. 법정 관리대상 여부는 최신 법령 근거를 확인해 직접 확정하도록 기본값을 ‘미확인’으로 둡니다.</p>
+<p class="hint">성분 위험등급은 해당 물질의 H-Code를 기준표와 대조해 1~4등급(없으면 ‘미확인’)으로 표시하고, 제품 대표 위험등급은 같은 제품 내 확인된 H-Code 중 가장 높은 등급 하나만 표시합니다. 끓는점 단위는 첫 행 헤더(℃)에 대표 기재합니다.</p>
 <div class="tablewrap"><table><thead><tr>
-<th>제품명</th><th>공정명</th><th>원본 MSDS 물질명</th><th>KOSHA 조회 물질명</th><th>CAS No.</th><th>함유량</th><th>CMR 분류</th><th>노출기준</th><th>끓는점</th><th>작업환경측정</th><th>특수건강진단</th><th>관리대상유해물질</th><th>특별관리물질</th><th>H-Code</th><th>제품 대표 위험등급</th><th>KOSHA 상태</th><th>산업안전보건법 규제사항</th><th>삭제</th>
+<th>제품명</th><th>공정명</th><th>원본 MSDS 물질명</th><th>KOSHA 조회 물질명</th><th>CAS No.</th><th>함유량</th><th>CMR 분류</th><th>노출기준</th><th>끓는점 (℃)</th><th>작업환경측정</th><th>특수건강진단</th><th>관리대상유해물질</th><th>특별관리물질</th><th>H-Code</th><th>성분 위험등급</th><th>제품 대표 위험등급</th><th>KOSHA 상태</th><th>산업안전보건법 규제사항</th><th>삭제</th>
 </tr></thead><tbody id="tbody"></tbody></table></div>
 <div id="tableStatus" class="status"></div>
 </section>
 <section class="panel">
 <h2>3. 분류 기준 및 확인사항</h2>
 <div class="warning">
-<b>첨부한 H3xx 기준표에 따라 분류하며, 4등급 &gt; 3등급 &gt; 2등급 &gt; 1등급 순으로 판단합니다.</b><br>
+<b>H3xx 기준표에 따라 분류하며, 4등급 &gt; 3등급 &gt; 2등급 &gt; 1등급 순으로 판단합니다(해당 코드가 없으면 ‘미확인’).</b><br>
 4등급: H340, H341, H350, H351, H360, H361, H362, H370<br>
 3등급: H300, H301, H310, H311, H330, H331, H314, H318, H317, H334, H372, H373<br>
 2등급: H302, H312, H332, H304, H371<br>
 1등급: H315, H319, H320, H335, H336<br>
 제품에 여러 구성성분 또는 H-Code가 있으면 해당 제품의 모든 확인된 H-Code 중 가장 높은 등급 하나만 제품 대표 위험등급으로 표시합니다.
 </div>
-<p class="hint">KOSHA 자료는 MSDS 작성·검토 참고용입니다. 공급자 MSDS와 현행 산업안전보건법령을 최종 확인해야 합니다. 특히 작업환경측정·특수건강진단·관리대상유해물질·특별관리물질은 단순 H-code만으로 자동 판정하지 않습니다.</p>
+<p class="hint">KOSHA 자료는 MSDS 작성·검토 참고용입니다. 공급자 MSDS와 현행 산업안전보건법령을 최종 확인해야 합니다. 자동 판정된 작업환경측정·특수건강진단·관리대상유해물질·특별관리물질(Y/N/미확인)도 원문과 함께 최종 검토하세요.</p>
 <p class="hint"><a href="https://msds.kosha.or.kr/MSDSInfo/" target="_blank" rel="noopener">KOSHA 화학물질정보</a> · <a href="https://www.data.go.kr/data/15157612/openapi.do" target="_blank" rel="noopener">공공데이터포털 MSDS OpenAPI 활용신청</a></p>
 </section>
 <footer>무료 공개형 웹사이트 · 로그인 없이 이용 가능합니다. 데이터는 이용자 브라우저에만 저장되며 자동 동기화되지 않습니다. 정기적으로 JSON 또는 엑셀 백업을 권장합니다.</footer>
@@ -67,27 +79,52 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <script>
 const STORAGE="msds-risk-map-v1";
 let rows=JSON.parse(localStorage.getItem(STORAGE)||"[]");
-const cols=["product","process","original_name","kosha_name","cas","content","cmr","exposure_limit","boiling_point","work_measurement","special_health_exam","managed_substance","specially_managed","h_codes","grade","kosha_status","legal_basis"];
-const labels=["제품명","공정명","원본 물질명","KOSHA 물질명","CAS No.","함유량","CMR","노출기준","끓는점","작업환경측정","특수건강진단","관리대상","특별관리","H-Code","제품 대표 위험등급","조회상태","법령근거"];
+const cols=["product","process","original_name","kosha_name","cas","content","cmr","exposure_limit","boiling_point","work_measurement","special_health_exam","managed_substance","specially_managed","h_codes","grade","product_grade","kosha_status","legal_basis"];
 const H_LEVEL={H340:4,H341:4,H350:4,H351:4,H360:4,H361:4,H362:4,H370:4,H300:3,H301:3,H310:3,H311:3,H330:3,H331:3,H314:3,H318:3,H317:3,H334:3,H372:3,H373:3,H302:2,H312:2,H332:2,H304:2,H371:2,H315:1,H319:1,H320:1,H335:1,H336:1};
-function refreshProductGrades(){
- const groups=new Map();
- rows.forEach(r=>{const key=r.product||"(제품명 없음)";const codes=String(r.h_codes||"").match(/H\d{3}/g)||[];const grade=Math.max(0,...codes.map(c=>H_LEVEL[c]||0));groups.set(key,Math.max(groups.get(key)||0,grade));});
- rows.forEach(r=>{const g=groups.get(r.product||"(제품명 없음)")||0;r.grade=g?`${g}등급`:"";});
+
+function calcRowGrade(hCodesStr){
+ const codes=String(hCodesStr||"").match(/H\d{3}/g)||[];
+ const g=Math.max(0,...codes.map(c=>H_LEVEL[c]||0));
+ return g?`${g}등급`:"미확인";
 }
+
+function refreshGrades(){
+ const groups=new Map();
+ rows.forEach(r=>{
+  const rowGrade=calcRowGrade(r.h_codes);
+  r.grade=rowGrade;
+  const num=rowGrade.endsWith("등급")?parseInt(rowGrade,10):0;
+  const key=r.product||"(제품명 없음)";
+  groups.set(key,Math.max(groups.get(key)||0,num));
+ });
+ rows.forEach(r=>{
+  const maxNum=groups.get(r.product||"(제품명 없음)")||0;
+  r.product_grade=maxNum?`${maxNum}등급`:"미확인";
+ });
+}
+
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function save(){localStorage.setItem(STORAGE,JSON.stringify(rows));render()}
 function el(id){return document.getElementById(id)}
+
 function render(){
- refreshProductGrades();
- el("tbody").innerHTML=rows.map((r,i)=>`<tr>${cols.map(k=>`<td>${["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)?`<select data-i="${i}" data-k="${k}">${["미확인","Y","N"].map(v=>`<option ${r[k]===v?"selected":""}>${v}</option>`).join("")}</select>`:`<input class="${["original_name","kosha_name","exposure_limit","legal_basis"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k])}">`}</td>`).join("")}<td><button class="secondary" data-del="${i}" style="padding:5px 8px">삭제</button></td></tr>`).join("");
+ refreshGrades();
+ el("tbody").innerHTML=rows.map((r,i)=>`<tr>${cols.map(k=>{
+  if(["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)){
+   const cur=r[k]||"미확인";
+   return `<td><select data-i="${i}" data-k="${k}">${["미확인","Y","N"].map(v=>`<option ${cur===v?"selected":""}>${v}</option>`).join("")}</select></td>`;
+  }
+  const ro=(k==="grade"||k==="product_grade")?"readonly style='background:#f6f9fb;font-weight:600'":"";
+  return `<td><input class="${["original_name","kosha_name","exposure_limit","legal_basis"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}" ${ro}></td>`;
+ }).join("")}<td><button class="secondary" data-del="${i}" style="padding:5px 8px">삭제</button></td></tr>`).join("");
  el("productsCount").textContent=new Set(rows.map(r=>r.product).filter(Boolean)).size;
  el("rowsCount").textContent=rows.length;
 }
+
 el("tbody").addEventListener("change",e=>{let i=e.target.dataset.i,k=e.target.dataset.k;if(i!==undefined){rows[+i][k]=e.target.value;save()}});
-el("tbody").addEventListener("input",e=>{let i=e.target.dataset.i,k=e.target.dataset.k;if(i!==undefined){rows[+i][k]=e.target.value;localStorage.setItem(STORAGE,JSON.stringify(rows))}});
+el("tbody").addEventListener("input",e=>{let i=e.target.dataset.i,k=e.target.dataset.k;if(i!==undefined){rows[+i][k]=e.target.value;if(k==="h_codes"||k==="product"){refreshGrades()}localStorage.setItem(STORAGE,JSON.stringify(rows));if(k==="h_codes"||k==="product"){render()}}});
 el("tbody").addEventListener("click",e=>{if(e.target.dataset.del!==undefined){rows.splice(+e.target.dataset.del,1);save()}});
-el("addRow").onclick=()=>{if(new Set(rows.map(r=>r.product)).size>=200){alert("제품은 최대 200개까지 등록할 수 있습니다.");return}rows.push(Object.fromEntries(cols.map(k=>[k,["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)?"미확인":""])));save()};
+el("addRow").onclick=()=>{if(new Set(rows.map(r=>r.product)).size>=200){alert("제품은 최대 200개까지 등록할 수 있습니다.");return}rows.push(Object.fromEntries(cols.map(k=>[k,["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)?"미확인":(k==="grade"||k==="product_grade"?"미확인":"")])));save()};
 el("upload").onclick=async()=>{
  const f=el("pdf").files[0],product=el("product").value.trim(),process=el("process").value.trim();
  if(!f||!product){el("uploadStatus").textContent="제품명과 PDF 파일을 입력해 주세요.";return}
@@ -109,13 +146,27 @@ el("lookupAll").onclick=async()=>{
   const cas=unique[n];el("tableStatus").textContent=`KOSHA 조회 중 ${n+1}/${unique.length}: ${cas}`;
   try{
    const res=await fetch("/api/kosha/"+encodeURIComponent(cas));const d=await res.json();if(!res.ok)throw new Error(d.detail||"조회 실패");
-   rows.filter(r=>r.cas===cas).forEach(r=>Object.assign(r,{kosha_name:d.kosha_name||"미확인",cmr:d.cmr||"",exposure_limit:d.exposure_limit||"미확인",boiling_point:d.boiling_point||"미확인",h_codes:d.h_codes||"",grade:d.grade||"",kosha_status:d.status||"미확인",legal_basis:d.regulation_text||"미확인"}));
+   rows.filter(r=>r.cas===cas).forEach(r=>Object.assign(r,{
+    kosha_name:d.kosha_name||"미확인",
+    cmr:d.cmr||"",
+    exposure_limit:d.exposure_limit||"미확인",
+    boiling_point:d.boiling_point||"미확인",
+    work_measurement:d.work_measurement||"미확인",
+    special_health_exam:d.special_health_exam||"미확인",
+    managed_substance:d.managed_substance||"미확인",
+    specially_managed:d.specially_managed||"미확인",
+    h_codes:d.h_codes||"",
+    grade:d.grade||calcRowGrade(d.h_codes),
+    kosha_status:d.status||"미확인",
+    legal_basis:d.regulation_text||"미확인"
+   }));
   }catch(e){rows.filter(r=>r.cas===cas).forEach(r=>r.kosha_status="조회 오류: "+e.message)}
-  refreshProductGrades();save();
+  refreshGrades();save();
  }
  el("tableStatus").textContent="조회 작업이 끝났습니다. ‘미확인’ 및 산업안전보건법 규제사항을 확인하고 필요한 값을 직접 보완하세요.";
 };
 async function download(kind){
+ refreshGrades();
  const res=await fetch("/api/export/"+kind,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rows})});
  if(!res.ok){const d=await res.json();alert(d.detail||"파일 생성 실패");return}
  const blob=await res.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="msds_integrated."+kind;a.click();URL.revokeObjectURL(url)
