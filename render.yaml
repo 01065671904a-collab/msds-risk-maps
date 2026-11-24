@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: msds-risk-map
+    runtime: docker
+    # Free: sleeps after 15 minutes without inbound traffic.
+    # For always-on hosting, deploy first and upgrade the instance to Starter in Render.
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: KOSHA_SERVICE_KEY
+        sync: false
+      - key: MAX_NEW_CAS_LOOKUPS_PER_DAY
+        value: "250"
