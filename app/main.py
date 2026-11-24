@@ -73,7 +73,7 @@ BLOCKED_BP_VALUES = {"1178", "1178.0"}
 
 
 def normalize_cas(text: str) -> str:
-    return FLEX_CAS_RE.sub(r"\1-\2-\3", text or "")
+    return FLEX_CAS_RE.sub(r"\1-\2-\3", (text or "").strip())
 
 
 def is_valid_chem_name(val: str, cas: str = "") -> bool:
@@ -371,21 +371,22 @@ async def extract_pdf(file: UploadFile = File(...)):
 
 @app.get("/api/lookup/{cas}")
 def lookup_cas(cas: str):
-    if not CAS_RE.fullmatch(cas):
-        return JSONResponse(status_code=400, content={"detail": "CAS번호 형식이 올바르지 않습니다."})
+    normalized = normalize_cas(cas)
+    if not CAS_RE.fullmatch(normalized):
+        return JSONResponse(status_code=400, content={"detail": "CAS번호 형식이 올바르지 않습니다. (예: 67-64-1)"})
 
-    web_info = parse_kosha_web(cas)
+    web_info = parse_kosha_web(normalized)
     blobs = list(web_info.get("text_blobs") or [])
-    chem_name = clean_name(web_info.get("chem_name") or "", cas)
+    chem_name = clean_name(web_info.get("chem_name") or "", normalized)
 
-    listing = kosha_api_get("getChemList001", {"searchWrd": cas, "searchCnd": "1", "numOfRows": "10", "pageNo": "1"})
+    listing = kosha_api_get("getChemList001", {"searchWrd": normalized, "searchCnd": "1", "numOfRows": "10", "pageNo": "1"})
     if not chem_name:
-        chem_name = extract_named_chem_from_xml(listing, cas)
+        chem_name = extract_named_chem_from_xml(listing, normalized)
     blobs.extend(flatten_strings(listing))
 
     chem_id = ""
     for s in flatten_strings(listing):
-        if re.fullmatch(r"[A-Za-z0-9_-]{4,30}", s) and s != cas and not s.upper().startswith("NORMAL"):
+        if re.fullmatch(r"[A-Za-z0-9_-]{4,30}", s) and s != normalized and not s.upper().startswith("NORMAL"):
             chem_id = s
             break
 
@@ -396,11 +397,11 @@ def lookup_cas(cas: str):
             details[op] = detail
             blobs.extend(flatten_strings(detail))
             if not chem_name:
-                chem_name = extract_named_chem_from_xml(detail, cas)
+                chem_name = extract_named_chem_from_xml(detail, normalized)
 
     if not chem_name:
         for s in blobs:
-            cleaned = clean_name(s, cas)
+            cleaned = clean_name(s, normalized)
             if cleaned:
                 chem_name = cleaned
                 break
@@ -413,12 +414,15 @@ def lookup_cas(cas: str):
     cmr_c, cmr_m, cmr_r = parse_cmr(combined_text, h_codes)
 
     boiling_point = ""
-    if twa_ppm.strip():
+    if twa_ppm.strip() or twa_mg.strip():
         boiling_point = parse_boiling_point(physical_text) or parse_boiling_point(combined_text)
 
+    found_any = bool(chem_name or twa_ppm or twa_mg or h_codes or boiling_point)
+
     return JSONResponse(content={
+        "found": found_any,
         "chem_name": chem_name,
-        "cas": cas,
+        "cas": normalized,
         "twa_ppm": twa_ppm,
         "twa_mg": twa_mg,
         "h_code": h_codes,
