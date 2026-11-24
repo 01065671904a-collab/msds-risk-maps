@@ -17,8 +17,9 @@ input[type=file]{max-width:100%}button{cursor:pointer;background:var(--navy);col
 button:disabled{opacity:.5;cursor:not-allowed}.hint{font-size:12px;color:var(--muted);line-height:1.55}.status{margin-top:10px;font-size:13px;color:var(--teal);white-space:pre-wrap}
 .metrics{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.metric{background:#f2f6f8;border-radius:9px;padding:10px 14px;font-size:13px}
 .tablewrap{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:9px}
-table{border-collapse:collapse;width:100%;min-width:1700px;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
+table{border-collapse:collapse;width:100%;min-width:1650px;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
 th{background:#edf2f5;position:sticky;top:0;z-index:1;white-space:nowrap}td input,td select{width:100%;min-width:72px;padding:6px;font-size:11px;border-radius:5px}
+td input[type=checkbox],th input[type=checkbox]{width:16px;height:16px;min-width:16px;padding:0;cursor:pointer}
 td .wide{min-width:140px}
 .warning{background:#fff8e9;border:1px solid #f1dfb8;border-radius:9px;padding:12px;font-size:12px;line-height:1.6}
 a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
@@ -48,16 +49,17 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <div class="hint">MSDS 3번 항목의 물질명·CAS No.·함유량을 추출합니다. 텍스트 PDF와 스캔 PDF(OCR)를 지원합니다. 업로드 PDF는 분석 후 서버에 보관하지 않습니다.</div>
 <div class="warning" style="margin-top:10px">개인정보 및 자료 보호 안내: 제품 목록과 분석 결과는 현재 이용 중인 브라우저에만 저장됩니다. 서버로 목록을 전송하거나 다른 이용자와 공유하지 않습니다. 다른 기기에서 이용하거나 브라우저 데이터를 삭제하기 전에 JSON 백업을 내려받으세요.</div>
 <div id="uploadStatus" class="status"></div>
-<div class="metrics"><div class="metric">등록 제품 <b id="productsCount">0</b> / 200</div><div class="metric">성분 행 <b id="rowsCount">0</b></div><div class="metric">KOSHA 인증키 <b id="keyStatus">확인 중</b></div></div>
+<div class="metrics"><div class="metric">등록 제품 <b id="productsCount">0</b> / 200</div><div class="metric">성분 행 <b id="rowsCount">0</b></div><div class="metric">선택 행 <b id="selectedCount">0</b></div><div class="metric">KOSHA 인증키 <b id="keyStatus">확인 중</b></div></div>
 </section>
 <section class="panel">
 <div class="row" style="justify-content:space-between"><h2 style="margin:0">2. 통합 성분 관리표</h2><div class="row">
-<button class="green" id="lookupAll">CAS 기준 KOSHA 조회</button><button class="secondary" id="addRow">성분 직접 추가</button>
+<button class="green" id="lookupAll">선택 항목 CAS KOSHA 조회</button><button class="secondary" id="addRow">성분 직접 추가</button>
 <button class="secondary" id="xlsx">엑셀 저장</button><button class="secondary" id="pdfout">PDF 저장</button><button class="secondary" id="backup">데이터 백업</button><button class="secondary" id="restore">백업 복원</button><input id="backupFile" type="file" accept="application/json,.json" hidden>
 </div></div>
-<p class="hint">성분 위험등급은 해당 물질의 H-Code를 기준표와 대조해 1~4등급(없으면 ‘미확인’)으로 표시하고, 제품 대표 위험등급은 같은 제품 내 확인된 H-Code 중 가장 높은 등급 하나만 표시합니다. 끓는점 단위는 첫 행 헤더(℃)에 대표 기재합니다.</p>
+<p class="hint">체크박스로 선택한 행만 KOSHA 조회를 실행합니다. 성분 위험등급은 해당 물질의 H-Code를 기준표와 대조해 1~4등급(없으면 ‘미확인’)으로 표시하고, 끓는점 단위는 첫 행 헤더(℃)에 대표 기재합니다.</p>
 <div class="tablewrap"><table><thead><tr>
-<th>제품명</th><th>공정명</th><th>원본 MSDS 물질명</th><th>KOSHA 조회 물질명</th><th>CAS No.</th><th>함유량</th><th>CMR 분류</th><th>노출기준</th><th>끓는점 (℃)</th><th>작업환경측정</th><th>특수건강진단</th><th>관리대상유해물질</th><th>특별관리물질</th><th>H-Code</th><th>성분 위험등급</th><th>제품 대표 위험등급</th><th>KOSHA 상태</th><th>산업안전보건법 규제사항</th><th>삭제</th>
+<th style="width:36px"><input type="checkbox" id="selectAll" title="전체 선택/해제"></th>
+<th>제품명</th><th>공정명</th><th>원본 MSDS 물질명</th><th>KOSHA 조회 물질명</th><th>CAS No.</th><th>함유량</th><th>CMR 분류</th><th>노출기준</th><th>끓는점 (℃)</th><th>작업환경측정</th><th>특수건강진단</th><th>관리대상유해물질</th><th>특별관리물질</th><th>H-Code</th><th>성분 위험등급</th><th>KOSHA 상태</th><th>산업안전보건법 규제사항</th><th>삭제</th>
 </tr></thead><tbody id="tbody"></tbody></table></div>
 <div id="tableStatus" class="status"></div>
 </section>
@@ -69,7 +71,7 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 3등급: H300, H301, H310, H311, H330, H331, H314, H318, H317, H334, H372, H373<br>
 2등급: H302, H312, H332, H304, H371<br>
 1등급: H315, H319, H320, H335, H336<br>
-제품에 여러 구성성분 또는 H-Code가 있으면 해당 제품의 모든 확인된 H-Code 중 가장 높은 등급 하나만 제품 대표 위험등급으로 표시합니다.
+성분 위험등급은 각 행의 H-Code 중 가장 높은 등급 하나를 기준으로 표시합니다.
 </div>
 <p class="hint">KOSHA 자료는 MSDS 작성·검토 참고용입니다. 공급자 MSDS와 현행 산업안전보건법령을 최종 확인해야 합니다. 자동 판정된 작업환경측정·특수건강진단·관리대상유해물질·특별관리물질(Y/N/미확인)도 원문과 함께 최종 검토하세요.</p>
 <p class="hint"><a href="https://msds.kosha.or.kr/MSDSInfo/" target="_blank" rel="noopener">KOSHA 화학물질정보</a> · <a href="https://www.data.go.kr/data/15157612/openapi.do" target="_blank" rel="noopener">공공데이터포털 MSDS OpenAPI 활용신청</a></p>
@@ -78,8 +80,8 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 </main>
 <script>
 const STORAGE="msds-risk-map-v1";
-let rows=JSON.parse(localStorage.getItem(STORAGE)||"[]");
-const cols=["product","process","original_name","kosha_name","cas","content","cmr","exposure_limit","boiling_point","work_measurement","special_health_exam","managed_substance","specially_managed","h_codes","grade","product_grade","kosha_status","legal_basis"];
+let rows=JSON.parse(localStorage.getItem(STORAGE)||"[]").map(r=>({...r,selected:r.selected!==false}));
+const cols=["product","process","original_name","kosha_name","cas","content","cmr","exposure_limit","boiling_point","work_measurement","special_health_exam","managed_substance","specially_managed","h_codes","grade","kosha_status","legal_basis"];
 const H_LEVEL={H340:4,H341:4,H350:4,H351:4,H360:4,H361:4,H362:4,H370:4,H300:3,H301:3,H310:3,H311:3,H330:3,H331:3,H314:3,H318:3,H317:3,H334:3,H372:3,H373:3,H302:2,H312:2,H332:2,H304:2,H371:2,H315:1,H319:1,H320:1,H335:1,H336:1};
 
 function calcRowGrade(hCodesStr){
@@ -89,18 +91,7 @@ function calcRowGrade(hCodesStr){
 }
 
 function refreshGrades(){
- const groups=new Map();
- rows.forEach(r=>{
-  const rowGrade=calcRowGrade(r.h_codes);
-  r.grade=rowGrade;
-  const num=rowGrade.endsWith("등급")?parseInt(rowGrade,10):0;
-  const key=r.product||"(제품명 없음)";
-  groups.set(key,Math.max(groups.get(key)||0,num));
- });
- rows.forEach(r=>{
-  const maxNum=groups.get(r.product||"(제품명 없음)")||0;
-  r.product_grade=maxNum?`${maxNum}등급`:"미확인";
- });
+ rows.forEach(r=>{r.grade=calcRowGrade(r.h_codes)});
 }
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -109,44 +100,62 @@ function el(id){return document.getElementById(id)}
 
 function render(){
  refreshGrades();
- el("tbody").innerHTML=rows.map((r,i)=>`<tr>${cols.map(k=>{
-  if(["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)){
-   const cur=r[k]||"미확인";
-   return `<td><select data-i="${i}" data-k="${k}">${["미확인","Y","N"].map(v=>`<option ${cur===v?"selected":""}>${v}</option>`).join("")}</select></td>`;
-  }
-  const ro=(k==="grade"||k==="product_grade")?"readonly style='background:#f6f9fb;font-weight:600'":"";
-  return `<td><input class="${["original_name","kosha_name","exposure_limit","legal_basis"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}" ${ro}></td>`;
- }).join("")}<td><button class="secondary" data-del="${i}" style="padding:5px 8px">삭제</button></td></tr>`).join("");
+ el("tbody").innerHTML=rows.map((r,i)=>`<tr>
+  <td><input type="checkbox" data-sel="${i}" ${r.selected!==false?"checked":""}></td>
+  ${cols.map(k=>{
+   if(["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)){
+    const cur=r[k]||"미확인";
+    return `<td><select data-i="${i}" data-k="${k}">${["미확인","Y","N"].map(v=>`<option ${cur===v?"selected":""}>${v}</option>`).join("")}</select></td>`;
+   }
+   const ro=(k==="grade")?"readonly style='background:#f6f9fb;font-weight:600'":"";
+   return `<td><input class="${["original_name","kosha_name","exposure_limit","legal_basis"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}" ${ro}></td>`;
+  }).join("")}
+  <td><button class="secondary" data-del="${i}" style="padding:5px 8px">삭제</button></td>
+ </tr>`).join("");
  el("productsCount").textContent=new Set(rows.map(r=>r.product).filter(Boolean)).size;
  el("rowsCount").textContent=rows.length;
+ const selCnt=rows.filter(r=>r.selected!==false).length;
+ el("selectedCount").textContent=selCnt;
+ el("selectAll").checked=rows.length>0 && selCnt===rows.length;
 }
 
-el("tbody").addEventListener("change",e=>{let i=e.target.dataset.i,k=e.target.dataset.k;if(i!==undefined){rows[+i][k]=e.target.value;save()}});
-el("tbody").addEventListener("input",e=>{let i=e.target.dataset.i,k=e.target.dataset.k;if(i!==undefined){rows[+i][k]=e.target.value;if(k==="h_codes"||k==="product"){refreshGrades()}localStorage.setItem(STORAGE,JSON.stringify(rows));if(k==="h_codes"||k==="product"){render()}}});
+el("selectAll").onchange=e=>{rows.forEach(r=>r.selected=e.target.checked);save()};
+el("tbody").addEventListener("change",e=>{
+ if(e.target.dataset.sel!==undefined){rows[+e.target.dataset.sel].selected=e.target.checked;save();return}
+ let i=e.target.dataset.i,k=e.target.dataset.k;
+ if(i!==undefined){rows[+i][k]=e.target.value;save()}
+});
+el("tbody").addEventListener("input",e=>{
+ let i=e.target.dataset.i,k=e.target.dataset.k;
+ if(i!==undefined){rows[+i][k]=e.target.value;if(k==="h_codes"){refreshGrades()}localStorage.setItem(STORAGE,JSON.stringify(rows));if(k==="h_codes"){render()}}
+});
 el("tbody").addEventListener("click",e=>{if(e.target.dataset.del!==undefined){rows.splice(+e.target.dataset.del,1);save()}});
-el("addRow").onclick=()=>{if(new Set(rows.map(r=>r.product)).size>=200){alert("제품은 최대 200개까지 등록할 수 있습니다.");return}rows.push(Object.fromEntries(cols.map(k=>[k,["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)?"미확인":(k==="grade"||k==="product_grade"?"미확인":"")])));save()};
+el("addRow").onclick=()=>{if(new Set(rows.map(r=>r.product)).size>=200){alert("제품은 최대 200개까지 등록할 수 있습니다.");return}const obj=Object.fromEntries(cols.map(k=>[k,["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)?"미확인":(k==="grade"?"미확인":"")]));obj.selected=true;rows.push(obj);save()};
 el("upload").onclick=async()=>{
  const f=el("pdf").files[0],product=el("product").value.trim(),process=el("process").value.trim();
  if(!f||!product){el("uploadStatus").textContent="제품명과 PDF 파일을 입력해 주세요.";return}
  if(![...new Set(rows.map(r=>r.product))].includes(product)&&new Set(rows.map(r=>r.product)).size>=200){alert("제품은 최대 200개까지 등록할 수 있습니다.");return}
+ // 기존 행 체크 해제 후 새로 추가되는 성분만 기본 체크하여 빠르게 조회할 수 있게 함
+ rows.forEach(r=>r.selected=false);
  el("uploadStatus").textContent="PDF 분석 중…";
  const fd=new FormData();fd.append("file",f);
  try{
   const res=await fetch("/api/extract",{method:"POST",body:fd});const data=await res.json();if(!res.ok)throw new Error(data.detail||"분석 실패");
   if(!data.ingredients.length)throw new Error("CAS No.를 찾지 못했습니다. PDF가 암호화되어 있거나 표 구조가 복잡할 수 있습니다. 성분 직접 추가를 이용해 주세요.");
-  data.ingredients.forEach(x=>rows.push({...x,product,process}));
-  save();el("uploadStatus").textContent=`${data.ingredients.length}개 성분을 추출했습니다. CAS No.와 함유량을 원본 MSDS와 대조해 주세요.`;
+  data.ingredients.forEach(x=>rows.push({...x,product,process,selected:true}));
+  save();el("uploadStatus").textContent=`${data.ingredients.length}개 성분을 추출했습니다. 체크된 새 성분만 KOSHA 조회하거나 원하는 행을 선택하세요.`;
  }catch(e){el("uploadStatus").textContent=e.message}
 };
 el("lookupAll").onclick=async()=>{
- const unique=[...new Set(rows.map(r=>r.cas).filter(Boolean))];
- if(!unique.length){el("tableStatus").textContent="조회할 CAS No.가 없습니다.";return}
- el("tableStatus").textContent=`KOSHA 조회 시작: ${unique.length}개 CAS`;
+ const targetRows=rows.filter(r=>r.selected!==false && r.cas);
+ const unique=[...new Set(targetRows.map(r=>r.cas))];
+ if(!unique.length){el("tableStatus").textContent="조회할 체크된 CAS No.가 없습니다.";return}
+ el("tableStatus").textContent=`선택 항목 KOSHA 조회 시작: ${unique.length}개 CAS`;
  for(let n=0;n<unique.length;n++){
   const cas=unique[n];el("tableStatus").textContent=`KOSHA 조회 중 ${n+1}/${unique.length}: ${cas}`;
   try{
    const res=await fetch("/api/kosha/"+encodeURIComponent(cas));const d=await res.json();if(!res.ok)throw new Error(d.detail||"조회 실패");
-   rows.filter(r=>r.cas===cas).forEach(r=>Object.assign(r,{
+   targetRows.filter(r=>r.cas===cas).forEach(r=>Object.assign(r,{
     kosha_name:d.kosha_name||"미확인",
     cmr:d.cmr||"",
     exposure_limit:d.exposure_limit||"미확인",
@@ -160,10 +169,10 @@ el("lookupAll").onclick=async()=>{
     kosha_status:d.status||"미확인",
     legal_basis:d.regulation_text||"미확인"
    }));
-  }catch(e){rows.filter(r=>r.cas===cas).forEach(r=>r.kosha_status="조회 오류: "+e.message)}
+  }catch(e){targetRows.filter(r=>r.cas===cas).forEach(r=>r.kosha_status="조회 오류: "+e.message)}
   refreshGrades();save();
  }
- el("tableStatus").textContent="조회 작업이 끝났습니다. ‘미확인’ 및 산업안전보건법 규제사항을 확인하고 필요한 값을 직접 보완하세요.";
+ el("tableStatus").textContent="선택 항목 조회가 끝났습니다. ‘미확인’ 및 산업안전보건법 규제사항을 확인하고 필요한 값을 직접 보완하세요.";
 };
 async function download(kind){
  refreshGrades();
@@ -174,7 +183,7 @@ async function download(kind){
 el("xlsx").onclick=()=>download("xlsx");el("pdfout").onclick=()=>download("pdf");
 el("backup").onclick=()=>{const blob=new Blob([JSON.stringify({format:"msds-risk-map-backup-v1",createdAt:new Date().toISOString(),rows},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="msds_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();URL.revokeObjectURL(url)};
 el("restore").onclick=()=>el("backupFile").click();
-el("backupFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());const incoming=Array.isArray(d)?d:d.rows;if(!Array.isArray(incoming))throw new Error("백업 파일 형식이 올바르지 않습니다.");if(!confirm(`백업 파일의 ${incoming.length}개 성분 행으로 현재 데이터를 교체할까요?`))return;rows=incoming;save();el("tableStatus").textContent="백업 데이터를 복원했습니다."}catch(err){alert("복원 실패: "+err.message)}finally{e.target.value=""}};
+el("backupFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());const incoming=Array.isArray(d)?d:d.rows;if(!Array.isArray(incoming))throw new Error("백업 파일 형식이 올바르지 않습니다.");if(!confirm(`백업 파일의 ${incoming.length}개 성분 행으로 현재 데이터를 교체할까요?`))return;rows=incoming.map(r=>({...r,selected:r.selected!==false}));save();el("tableStatus").textContent="백업 데이터를 복원했습니다."}catch(err){alert("복원 실패: "+err.message)}finally{e.target.value=""}};
 fetch("/api/health").then(r=>r.json()).then(d=>el("keyStatus").textContent=d.kosha_key_configured?"등록됨":"미등록");
 render();
 </script></body></html>
