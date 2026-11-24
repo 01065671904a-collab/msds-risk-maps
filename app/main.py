@@ -1,6 +1,12 @@
-import os, re, io, time, threading, xml.etree.ElementTree as ET
+import os
+import re
+import io
+import time
+import threading
+import xml.etree.ElementTree as ET
 from collections import defaultdict
 from datetime import date
+
 import requests
 import fitz
 import pytesseract
@@ -17,6 +23,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+
 app = FastAPI(title="MSDS 유해화학물질 통합관리")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
@@ -27,9 +34,12 @@ _CACHE_LOCK = threading.Lock()
 _IP_CALLS = defaultdict(list)
 _DAILY_LOOKUPS = {"day": date.today().isoformat(), "count": 0}
 MAX_NEW_CAS_LOOKUPS_PER_DAY = int(os.getenv("MAX_NEW_CAS_LOOKUPS_PER_DAY", "250"))
+
 CAS_RE = re.compile(r"(?<!\d)(\d{2,7}-\d{2}-\d)(?!\d)")
 FLEX_CAS_RE = re.compile(r"(?<!\d)(\d{2,7})\s*[-–—‐‑‒−]\s*(\d{2})\s*[-–—‐‑‒−]\s*(\d)(?!\d)")
-H_RE = re.compile(r"\bH(?:300|301|302|304|310|311|312|314|315|317|318|319|320|330|331|332|334|335|336|340|341|350|351|360|361|362|370|371|372|373)\b")
+H_RE = re.compile(
+    r"\bH(?:300|301|302|304|310|311|312|314|315|317|318|319|320|330|331|332|334|335|336|340|341|350|351|360|361|362|370|371|372|373)\b"
+)
 
 # 4등급 > 3등급 > 2등급 > 1등급
 H_LEVEL = {
@@ -140,4 +150,126 @@ def protect_public_kosha_request(client_ip, cas):
     return None
 
 
-def find_values(obj, keys
+def find_values(obj, keys):
+    found = []
+    lower_keys = {x.lower() for x in keys}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k.lower() in lower_keys:
+                found.extend(flatten_text(v))
+            found.extend(find_values(v, keys))
+    elif isinstance(obj, list):
+        for v in obj:
+            found.extend(find_values(v, keys))
+    return found
+
+
+def first_value(obj, keys, allow_no_data=False):
+    vals = clean_values(find_values(obj, keys), allow_no_data=allow_no_data)
+    return " / ".join(vals)
+
+
+def extract_chem_name(listing, detail01, detail03, cas):
+    candidate_keys = [
+        "chemNameKor", "chemNmKor", "chemName", "chemNm", "chemicalName",
+        "msdsName", "prdtNm", "물질명", "화학물질명", "국문명", "제품명"
+    ]
+
+    def search_items(node):
+        if isinstance(node, dict):
+            vals_str = " ".join(flatten_text(node))
+            if cas in vals_str:
+                for k in candidate_keys:
+                    for nk, nv in node.items():
+                        if nk.lower() == k.lower():
+                            c = clean_values(flatten_text(nv))
+                            for item in c:
+                                if item != cas and not CAS_RE.fullmatch(item):
+                                    return item
+            for v in node.values():
+                res = search_items(v)
+                if res:
+                    return res
+        elif isinstance(node, list):
+            for v in node:
+                res = search_items(v)
+                if res:
+                    return res
+        return None
+
+    for src in (listing, detail01, detail03):
+        hit = search_items(src)
+        if hit:
+            return hit
+
+    for src in (listing, detail01, detail03):
+        vals = clean_values(find_values(src, candidate_keys))
+        for v in vals:
+            if v != cas and not CAS_RE.fullmatch(v) and "MSDS" not in v.upper():
+                return v
+
+    def search_label_value(node):
+        if isinstance(node, dict):
+            flat = clean_values(flatten_text(node))
+            for idx, txt in enumerate(flat):
+                if any(lbl in txt for lbl in ["제품명", "화학물질명", "물질명"]) and idx + 1 < len(flat):
+                    nxt = flat[idx + 1]
+                    if nxt != cas and not CAS_RE.fullmatch(nxt):
+                        return nxt
+            for v in node.values():
+                res = search_label_value(v)
+                if res:
+                    return res
+        elif isinstance(node, list):
+            for v in node:
+                res = search_label_value(v)
+                if res:
+                    return res
+        return None
+
+    for src in (detail01, detail03):
+        hit = search_label_value(src)
+        if hit:
+            return hit
+
+    return "미확인"
+
+
+def extract_exposure_text(detail_obj):
+    domestic_texts = []
+
+    def collect_domestic(node):
+        if isinstance(node, dict):
+            flat = clean_values(flatten_text(node))
+            joined = " ".join(flat)
+            if "국내규정" in joined:
+                for idx, txt in enumerate(flat):
+                    if "국내규정" in txt:
+                        domestic_texts.extend(flat[idx : idx + 4])
+                return
+            for k, v in node.items():
+                if "국내규정" in str(k):
+                    domestic_texts.extend(clean_values(flatten_text(v)))
+                else:
+                    collect_domestic(v)
+        elif isinstance(node, list):
+            for v in node:
+                collect_domestic(v)
+
+    collect_domestic(detail_obj)
+    source_texts = domestic_texts if domestic_texts else clean_values(flatten_text(detail_obj))
+
+    filtered_chunks = []
+    for t in source_texts:
+        if any(foreign in t.upper() for foreign in ["ACGIH", "OSHA", "NIOSH", "국외규정", "생물학적 노출기준"]):
+            break
+        filtered_chunks.append(t)
+
+    combined = " \n ".join(filtered_chunks)
+    if not combined or ("자료없음" in combined and not re.search(r"(TWA|STEL|CEILING|(?<![A-Z])C(?![A-Z]))", combined, re.I)):
+        return "미확인"
+
+    found = {}
+    patterns = [
+        ("TWA", r"TWA\s*[:：-]?\s*([0-9]+(?:\.[0-9]+)?\s*(?:ppm|mg/m3|mg/㎥|㎎/㎥))"),
+        ("STEL", r"STEL\s*[:：-]?\s*([0-9
