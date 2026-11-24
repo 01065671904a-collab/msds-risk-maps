@@ -2,7 +2,6 @@ import io
 import os
 import re
 import xml.etree.ElementTree as ET
-from urllib.parse import quote
 
 import fitz
 import pytesseract
@@ -42,14 +41,60 @@ H_GRADE_MAP = {
     "H315": 1, "H319": 1, "H320": 1, "H335": 1, "H336": 1,
 }
 
+INVALID_CHEM_NAMES = {
+    "NORMAL SERVICE",
+    "NORMAL SERVICE.",
+    "00",
+    "NULL",
+    "NONE",
+    "N/A",
+    "-",
+    "자료없음",
+    "해당없음",
+    "MSDS",
+    "KOSHA",
+}
+
+CHEM_NAME_KEYS = {
+    "chemnamekor",
+    "chemnmkor",
+    "chemname",
+    "chemnm",
+    "chemicalname",
+    "msdsname",
+    "prbtnm",
+    "prdtNm".lower(),
+    "물질명",
+    "화학물질명",
+    "국문명",
+}
+
 
 def normalize_cas(text: str) -> str:
     return FLEX_CAS_RE.sub(r"\1-\2-\3", text or "")
 
 
-def clean_name(raw: str) -> str:
+def is_valid_chem_name(val: str, cas: str = "") -> bool:
+    s = re.sub(r"\s+", " ", str(val or "")).strip()
+    if not s or len(s) < 2:
+        return False
+    up = s.upper()
+    if up in INVALID_CHEM_NAMES or up.startswith("NORMAL SERVICE"):
+        return False
+    if cas and s == cas:
+        return False
+    if CAS_RE.fullmatch(s):
+        return False
+    if re.fullmatch(r"[0-9.\s~-]+", s):
+        return False
+    return bool(re.search(r"[가-힣A-Za-z]", s))
+
+
+def clean_name(raw: str, cas: str = "") -> str:
     s = re.sub(r"/\s*KE-\d+", "", str(raw or ""), flags=re.I)
     s = re.sub(r"\s+", " ", s).strip(" |,:;-/")
+    if not is_valid_chem_name(s, cas):
+        return ""
     return s[:150]
 
 
@@ -80,11 +125,11 @@ def extract_pdf_items(data: bytes) -> list[dict]:
                 continue
             seen.add(cas)
             before = line[: m.start()].strip()
-            name = clean_name(before)
+            name = clean_name(before, cas)
             if not name and idx > 0:
                 prev = lines[idx - 1]
                 if not CAS_RE.search(prev):
-                    name = clean_name(prev)
+                    name = clean_name(prev, cas)
             items.append({
                 "original_name": name,
                 "cas": cas,
@@ -116,9 +161,33 @@ def flatten_strings(obj) -> list[str]:
             res.extend(flatten_strings(v))
     elif obj is not None:
         s = re.sub(r"\s+", " ", str(obj)).strip()
-        if s:
+        if s and not s.upper().startswith("NORMAL SERVICE"):
             res.append(s)
     return res
+
+
+def extract_named_chem_from_xml(obj, cas: str) -> str:
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                kl = str(k).lower()
+                if kl in CHEM_NAME_KEYS or any(t in kl for t in ["chemname", "chemnm", "물질명", "국문명"]):
+                    for s in flatten_strings(v):
+                        cleaned = clean_name(s, cas)
+                        if cleaned:
+                            found.append(cleaned)
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(obj)
+    for cand in found:
+        if re.search(r"[가-힣]", cand):
+            return cand
+    return found[0] if found else ""
 
 
 def kosha_api_get(operation: str, params: dict) -> dict:
@@ -152,8 +221,9 @@ def parse_kosha_web(cas: str) -> dict:
             if cas in row_txt:
                 cells = [re.sub(r"\s+", " ", td.get_text(" ", strip=True)) for td in tr.select("td")]
                 for c in cells:
-                    if c and c != cas and not CAS_RE.fullmatch(c) and len(c) >= 2:
-                        info["chem_name"] = clean_name(c)
+                    cleaned = clean_name(c, cas)
+                    if cleaned:
+                        info["chem_name"] = cleaned
                         break
                 if info["chem_name"]:
                     break
@@ -222,15 +292,31 @@ def parse_cmr(combined_text: str, h_codes_str: str) -> tuple[str, str, str]:
 
 
 def parse_boiling_point(combined_text: str) -> str:
-    bp_segments = []
-    for m in re.finditer(r"(?:초기\s*끓는점|끓는점\s*범위|초기끓는점|끓는점|boiling\s*point)", combined_text, re.I):
-        bp_segments.append(combined_text[m.start() : min(len(combined_text), m.end() + 60)])
-
-    target = " ".join(bp_segments) if bp_segments else combined_text
+    """
+    '초기 끓는점과 끓는점 범위' 항목에서만 값을 추출하고,
+    '인화점' / '발화점' 항목의 값과 섞이지 않도록 제한합니다.
+    단위(℃, °C 등)는 떼고, 범위(예: 337~340 ℃)면 최소값(337)만 반환합니다.
+    """
+    bp_section = ""
+    m = re.search(
+        r"(?:초기\s*끓는점과\s*끓는점\s*범위|초기\s*끓는점|끓는점\s*범위|초기끓는점|끓는점)",
+        combined_text,
+        re.I,
+    )
+    if m:
+        after = combined_text[m.end() :]
+        stop_m = re.search(
+            r"(?:인화점|발화점|자연발화온도|증기압|용해도|비중|점도|출처\s*[:：]|※\s*출처)",
+            after,
+            re.I,
+        )
+        bp_section = after[: stop_m.start()] if stop_m else after[:80]
+    else:
+        return ""
 
     range_m = re.search(
         r"(-?\d+(?:\.\d+)?)\s*(?:~|-|–|—|to)\s*(-?\d+(?:\.\d+)?)\s*(?:°\s*C|℃|C)?",
-        target,
+        bp_section,
         re.I,
     )
     if range_m:
@@ -239,7 +325,7 @@ def parse_boiling_point(combined_text: str) -> str:
         low = min(v1, v2)
         return str(int(low)) if low.is_integer() else str(low)
 
-    single_m = re.search(r"(-?\d+(?:\.\d+)?)\s*(?:°\s*C|℃)", target, re.I)
+    single_m = re.search(r"(-?\d+(?:\.\d+)?)\s*(?:°\s*C|℃)", bp_section, re.I)
     if single_m:
         val = float(single_m.group(1))
         return str(int(val)) if val.is_integer() else str(val)
@@ -276,34 +362,45 @@ def lookup_cas(cas: str):
 
     web_info = parse_kosha_web(cas)
     blobs = list(web_info.get("text_blobs") or [])
-    chem_name = web_info.get("chem_name") or ""
+    chem_name = clean_name(web_info.get("chem_name") or "", cas)
 
     listing = kosha_api_get("getChemList001", {"searchWrd": cas, "searchCnd": "1", "numOfRows": "10", "pageNo": "1"})
+    if not chem_name:
+        chem_name = extract_named_chem_from_xml(listing, cas)
     blobs.extend(flatten_strings(listing))
 
     chem_id = ""
     for s in flatten_strings(listing):
-        if re.fullmatch(r"[A-Za-z0-9_-]{4,30}", s) and s != cas:
+        if re.fullmatch(r"[A-Za-z0-9_-]{4,30}", s) and s != cas and not s.upper().startswith("NORMAL"):
             chem_id = s
             break
 
+    details = {}
     if chem_id:
         for op in ["getChemDetail011", "getChemDetail021", "getChemDetail031", "getChemDetail081", "getChemDetail091", "getChemDetail151"]:
             detail = kosha_api_get(op, {"chemId": chem_id})
+            details[op] = detail
             blobs.extend(flatten_strings(detail))
+            if not chem_name:
+                chem_name = extract_named_chem_from_xml(detail, cas)
 
     if not chem_name:
         for s in blobs:
-            if s != cas and not CAS_RE.fullmatch(s) and len(s) >= 2 and not re.fullmatch(r"[0-9.\s]+", s):
-                if any(ch.isalpha() or ("\uac00" <= ch <= "\ud7a3") for ch in s):
-                    chem_name = clean_name(s)
-                    break
+            cleaned = clean_name(s, cas)
+            if cleaned:
+                chem_name = cleaned
+                break
 
+    physical_text = " ".join(flatten_strings(details.get("getChemDetail091", {})))
     combined_text = " ".join(blobs)
+
     twa_ppm, twa_mg = parse_twa_values(combined_text)
     h_codes, h_grade = parse_h_codes_and_grade(combined_text)
     cmr_c, cmr_m, cmr_r = parse_cmr(combined_text, h_codes)
-    boiling_point = parse_boiling_point(combined_text) if twa_ppm.strip() else ""
+
+    boiling_point = ""
+    if twa_ppm.strip():
+        boiling_point = parse_boiling_point(physical_text) or parse_boiling_point(combined_text)
 
     return JSONResponse(content={
         "chem_name": chem_name,
