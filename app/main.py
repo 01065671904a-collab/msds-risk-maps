@@ -415,3 +415,6 @@ def industrial_safety_law_text(obj):
                 if child_hits:
                     for v in child_hits:
                         walk(v)
+@app.get("/api/health")
+def health():
+    return {"ok": True}
