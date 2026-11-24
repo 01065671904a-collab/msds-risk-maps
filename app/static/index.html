@@ -21,6 +21,19 @@ table{border-collapse:collapse;width:100%;min-width:1650px;font-size:12px}th,td{
 th{background:#edf2f5;position:sticky;top:0;z-index:1;white-space:nowrap}td input,td select{width:100%;min-width:72px;padding:6px;font-size:11px;border-radius:5px}
 td input[type=checkbox],th input[type=checkbox]{width:16px;height:16px;min-width:16px;padding:0;cursor:pointer}
 td .wide{min-width:140px}
+/* 주요 식별/위험 항목 시각적 구분 색상 */
+th.col-cas{background:#dbeafe;color:#1e3a8a}
+td.col-cas{background:#eff6ff}
+td.col-cas input{background:#ffffff;border-color:#60a5fa;font-weight:700;color:#1e3a8a}
+th.col-bp{background:#ffedd5;color:#9a3412}
+td.col-bp{background:#fff7ed}
+td.col-bp input{background:#ffffff;border-color:#fb923c;font-weight:700;color:#9a3412}
+th.col-hcode{background:#f3e8ff;color:#6b21a8}
+td.col-hcode{background:#faf5ff}
+td.col-hcode input{background:#ffffff;border-color:#c084fc;font-weight:600;color:#6b21a8}
+th.col-grade{background:#ffe4e6;color:#9f1239}
+td.col-grade{background:#fff1f2}
+td.col-grade input{background:#ffe4e6 !important;border-color:#fb7185;font-weight:700;color:#9f1239}
 .warning{background:#fff8e9;border:1px solid #f1dfb8;border-radius:9px;padding:12px;font-size:12px;line-height:1.6}
 a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 @media(max-width:700px){.header-title h1{font-size:19px}.header-logo img{height:34px}.panel{padding:13px}.row>*{flex:1 1 100%}button{width:100%}}
@@ -61,7 +74,7 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <p class="hint">체크박스로 선택한 행만 KOSHA 조회 또는 일괄 삭제할 수 있습니다. 성분 위험등급은 해당 물질의 H-Code를 기준표와 대조해 1~4등급(없으면 ‘미확인’)으로 표시하고, 끓는점 단위는 첫 행 헤더(℃)에 대표 기재합니다.</p>
 <div class="tablewrap"><table><thead><tr>
 <th style="width:36px"><input type="checkbox" id="selectAll" title="전체 선택/해제"></th>
-<th>공정명</th><th>제품명</th><th>원본 MSDS 물질명</th><th>KOSHA 조회 물질명</th><th>CAS No.</th><th>함유량</th><th>CMR 분류</th><th>노출기준</th><th>끓는점 (℃)</th><th>작업환경측정</th><th>특수건강진단</th><th>관리대상유해물질</th><th>특별관리물질</th><th>H-Code</th><th>성분 위험등급</th><th>KOSHA 상태</th><th>산업안전보건법 규제사항</th><th>삭제</th>
+<th>공정명</th><th>제품명</th><th>원본 MSDS 물질명</th><th>KOSHA 조회 물질명</th><th class="col-cas">CAS No.</th><th>함유량</th><th>CMR 분류</th><th>노출기준</th><th class="col-bp">끓는점 (℃)</th><th>작업환경측정</th><th>특수건강진단</th><th>관리대상유해물질</th><th>특별관리물질</th><th class="col-hcode">H-Code</th><th class="col-grade">성분 위험등급</th><th>KOSHA 상태</th><th>산업안전보건법 규제사항</th><th>삭제</th>
 </tr></thead><tbody id="tbody"></tbody></table></div>
 <div id="tableStatus" class="status"></div>
 </section>
@@ -105,12 +118,13 @@ function render(){
  el("tbody").innerHTML=rows.map((r,i)=>`<tr>
   <td><input type="checkbox" data-sel="${i}" ${r.selected!==false?"checked":""}></td>
   ${cols.map(k=>{
+   const colCls=k==="cas"?"col-cas":k==="boiling_point"?"col-bp":k==="h_codes"?"col-hcode":k==="grade"?"col-grade":"";
    if(["work_measurement","special_health_exam","managed_substance","specially_managed"].includes(k)){
     const cur=r[k]||"미확인";
     return `<td><select data-i="${i}" data-k="${k}">${["미확인","Y","N"].map(v=>`<option ${cur===v?"selected":""}>${v}</option>`).join("")}</select></td>`;
    }
-   const ro=(k==="grade")?"readonly style='background:#f6f9fb;font-weight:600'":"";
-   return `<td><input class="${["original_name","kosha_name","exposure_limit","legal_basis"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}" ${ro}></td>`;
+   const ro=(k==="grade")?"readonly":"";
+   return `<td class="${colCls}"><input class="${["original_name","kosha_name","exposure_limit","legal_basis"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}" ${ro}></td>`;
   }).join("")}
   <td><button class="secondary" data-del="${i}" style="padding:5px 8px">삭제</button></td>
  </tr>`).join("");
