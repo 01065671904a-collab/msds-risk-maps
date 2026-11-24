@@ -69,6 +69,8 @@ CHEM_NAME_KEYS = {
     "국문명",
 }
 
+BLOCKED_BP_VALUES = {"1178", "1178.0"}
+
 
 def normalize_cas(text: str) -> str:
     return FLEX_CAS_RE.sub(r"\1-\2-\3", text or "")
@@ -291,6 +293,11 @@ def parse_cmr(combined_text: str, h_codes_str: str) -> tuple[str, str, str]:
     return c_val, m_val, r_val
 
 
+def _format_num_token(raw_num: str) -> str:
+    val = float(raw_num)
+    return str(int(val)) if val.is_integer() else str(val)
+
+
 def parse_boiling_point(combined_text: str) -> str:
     if not combined_text:
         return ""
@@ -307,13 +314,11 @@ def parse_boiling_point(combined_text: str) -> str:
         for m in re.finditer(pat, combined_text, re.I):
             after = combined_text[m.end() :]
             deg_m = re.search(r"℃", after)
-            if not deg_m:
+            if not deg_m or deg_m.start() > 60:
                 continue
-            # 라벨과 '℃' 사이가 너무 길거나 중간에 다른 항목명이 끼면 공통 문구/오탐으로 간주
-            if deg_m.start() > 45:
-                continue
+
             segment = after[: deg_m.start()]
-            if re.search(r"(?:인화점|발화점|자연발화|녹는점|어는점|증기압|출처|※|구분)", segment):
+            if re.search(r"(?:인화점|발화점|자연발화|녹는점|어는점|증기압|출처|※)", segment):
                 continue
 
             range_m = re.search(
@@ -325,12 +330,19 @@ def parse_boiling_point(combined_text: str) -> str:
                 v1 = float(range_m.group(1))
                 v2 = float(range_m.group(2))
                 low = min(v1, v2)
-                return str(int(low)) if low.is_integer() else str(low)
+                if -100 <= low <= 1000:
+                    formatted = str(int(low)) if low.is_integer() else str(low)
+                    if formatted not in BLOCKED_BP_VALUES:
+                        return formatted
+                continue
 
             single_m = re.search(r"(-?\d+(?:\.\d+)?)", segment)
             if single_m:
                 val = float(single_m.group(1))
-                return str(int(val)) if val.is_integer() else str(val)
+                if -100 <= val <= 1000:
+                    formatted = _format_num_token(single_m.group(1))
+                    if formatted not in BLOCKED_BP_VALUES:
+                        return formatted
 
     return ""
 
