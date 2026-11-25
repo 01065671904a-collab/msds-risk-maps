@@ -17,7 +17,7 @@ input[type=file]{max-width:100%}button{cursor:pointer;background:var(--navy);col
 button:disabled{opacity:.5;cursor:not-allowed}.hint{font-size:12px;color:var(--muted);line-height:1.55}.status{margin-top:10px;font-size:13px;color:var(--teal);white-space:pre-wrap}
 .metrics{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.metric{background:#f2f6f8;border-radius:9px;padding:10px 14px;font-size:13px}
 .tablewrap{overflow:auto;max-height:65vh;border:1px solid var(--line);border-radius:9px}
-table{border-collapse:collapse;width:100%;min-width:1550px;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
+table{border-collapse:collapse;width:100%;min-width:1450px;font-size:12px}th,td{border-bottom:1px solid var(--line);padding:7px;text-align:left;vertical-align:top}
 th{background:#edf2f5;position:sticky;top:0;z-index:1;white-space:nowrap}td input{width:100%;min-width:72px;padding:6px;font-size:11px;border-radius:5px}
 td input[type=checkbox],th input[type=checkbox]{width:16px;height:16px;min-width:16px;padding:0;cursor:pointer}
 td .wide{min-width:140px}
@@ -86,7 +86,6 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <th style="width:36px"><input type="checkbox" id="selectAll" title="전체 선택/해제"></th>
 <th>공정명</th>
 <th>제품명</th>
-<th>원본 MSDS 물질명</th>
 <th>화학물질명(필수)</th>
 <th>CAS번호</th>
 <th>TWA(ppm)값</th>
@@ -185,7 +184,7 @@ const KOSHA_MSDS_URL="https://msds.kosha.or.kr/MSDSInfo/";
 let rows=[];
 try{rows=JSON.parse(localStorage.getItem(STORAGE)||"[]").map(r=>({...r,selected:r.selected!==false}))}catch(e){rows=[]}
 
-const cols=["process","product","original_name","chem_name","cas","twa_ppm","twa_mg","h_code","h_grade","cmr_c","cmr_m","cmr_r","boiling_point"];
+const cols=["process","product","chem_name","cas","twa_ppm","twa_mg","h_code","h_grade","cmr_c","cmr_m","cmr_r","boiling_point"];
 const H_LEVEL={H340:4,H341:4,H350:4,H351:4,H360:4,H361:4,H362:4,H370:4,H300:3,H301:3,H310:3,H311:3,H330:3,H331:3,H314:3,H318:3,H317:3,H334:3,H372:3,H373:3,H302:2,H312:2,H332:2,H304:2,H371:2,H315:1,H319:1,H320:1,H335:1,H336:1};
 
 function calcGrade(hStr){
@@ -206,7 +205,7 @@ function render(){
  refreshGrades();
  el("tbody").innerHTML=rows.map((r,i)=>`<tr>
   <td><input type="checkbox" data-sel="${i}" ${r.selected!==false?"checked":""}></td>
-  ${cols.map(k=>`<td><input class="${["original_name","chem_name"].includes(k)?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}"></td>`).join("")}
+  ${cols.map(k=>`<td><input class="${k==="chem_name"?"wide":""}" data-i="${i}" data-k="${k}" value="${esc(r[k]??"")}"></td>`).join("")}
  </tr>`).join("");
  el("productsCount").textContent=new Set(rows.map(r=>r.product).filter(Boolean)).size;
  el("rowsCount").textContent=rows.length;
