@@ -106,13 +106,16 @@ def extract_pdf_items(data: bytes) -> list[dict]:
     for page in doc:
         txt = page.get_text("text") or ""
         if len(txt.strip()) < 25:
-            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
-            img = Image.open(io.BytesIO(pix.tobytes("png")))
             try:
-                ocr = pytesseract.image_to_string(img, lang="kor+eng")
+                pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0), alpha=False)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                try:
+                    ocr = pytesseract.image_to_string(img, lang="kor+eng")
+                except Exception:
+                    ocr = pytesseract.image_to_string(img, lang="eng")
+                txt = f"{txt}\n{ocr}".strip()
             except Exception:
-                ocr = pytesseract.image_to_string(img, lang="eng")
-            txt = f"{txt}\n{ocr}".strip()
+                pass
         pages_text.append(normalize_cas(txt))
 
     full_text = "\n".join(pages_text)
@@ -129,9 +132,11 @@ def extract_pdf_items(data: bytes) -> list[dict]:
             before = line[: m.start()].strip()
             name = clean_name(before, cas)
             if not name and idx > 0:
-                prev = lines[idx - 1]
-                if not CAS_RE.search(prev):
-                    name = clean_name(prev, cas)
+                for back in range(1, 3):
+                    if idx - back >= 0 and not CAS_RE.search(lines[idx - back]):
+                        name = clean_name(lines[idx - back], cas)
+                        if name:
+                            break
             items.append({
                 "original_name": name,
                 "cas": cas,
