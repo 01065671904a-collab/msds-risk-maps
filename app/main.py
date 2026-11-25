@@ -442,7 +442,6 @@ def lookup_cas(cas: str):
 EXPORT_HEADERS = [
     "공정명",
     "제품명",
-    "원본 MSDS 물질명",
     "화학물질명(필수)",
     "CAS번호",
     "TWA(ppm)값",
@@ -458,7 +457,6 @@ EXPORT_HEADERS = [
 EXPORT_KEYS = [
     "process",
     "product",
-    "original_name",
     "chem_name",
     "cas",
     "twa_ppm",
@@ -517,7 +515,7 @@ async def export_pdf(payload: dict):
             Paragraph(str((r or {}).get(k, "") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), style)
             for k in EXPORT_KEYS
         ])
-    widths = [55, 60, 95, 95, 58, 48, 48, 65, 45, 42, 42, 48, 45]
+    widths = [60, 65, 110, 62, 52, 52, 70, 48, 45, 45, 52, 48]
     t = Table(data, colWidths=widths, repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#18384B")),
