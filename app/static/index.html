@@ -23,7 +23,25 @@ td input[type=checkbox],th input[type=checkbox]{width:16px;height:16px;min-width
 td .wide{min-width:140px}
 .warning{background:#fff8e9;border:1px solid #f1dfb8;border-radius:9px;padding:12px;font-size:12px;line-height:1.6}
 a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
-@media(max-width:700px){.header-title h1{font-size:19px}.header-logo img{height:34px}.panel{padding:13px}.row>*{flex:1 1 100%}button{width:100%}}
+
+/* 보조 화면(모달) 스타일 */
+.modal-backdrop{position:fixed;inset:0;background:#10222c88;display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
+.modal-backdrop.open{display:flex}
+.modal-card{background:white;border:1px solid var(--line);border-radius:14px;width:100%;max-width:780px;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 12px 32px #10222c33}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}
+.modal-head h3{margin:0;font-size:17px;color:var(--navy)}
+.modal-close{background:#e9eff2;color:#29404e;padding:6px 12px;font-size:13px}
+.lookup-box{background:#f4f8fa;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px}
+.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;font-weight:650;color:#243742}
+.field .req{color:var(--danger)}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);flex-wrap:wrap}
+
+@media(max-width:700px){
+  .header-title h1{font-size:19px}.header-logo img{height:34px}.panel{padding:13px}.row>*{flex:1 1 100%}button{width:100%}
+  .form-grid{grid-template-columns:1fr}.modal-close{width:auto}
+}
 </style></head>
 <body>
 <header>
@@ -60,6 +78,7 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <div class="row" style="justify-content:space-between"><h2 style="margin:0">2. 통합 성분 관리표</h2><div class="row">
 <button class="green" id="lookupAll">선택 항목 CAS KOSHA 조회</button>
 <button class="danger" id="deleteSelected">선택 항목 일괄 삭제</button>
+<button class="secondary" id="openManualModal">직접 입력</button>
 <button class="secondary" id="xlsx">엑셀 저장</button>
 <button class="secondary" id="pdfout">PDF 저장</button>
 </div></div>
@@ -96,8 +115,75 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 </section>
 <footer>무료 공개형 웹사이트 · 로그인 없이 이용 가능합니다. KOSHA 자료는 작성·검토 참고용이며 공급자 MSDS 및 관련 법령을 최종 확인하시기 바랍니다.</footer>
 </main>
+
+<!-- 보조 화면: CAS No. 조회 및 성분 직접 입력 모달 -->
+<div id="manualModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="modalTitle">성분 직접 입력 · CAS No. KOSHA 조회</h3>
+      <button type="button" class="modal-close" id="closeManualModal">닫기</button>
+    </div>
+
+    <div class="lookup-box">
+      <div class="row">
+        <input id="modalCasSearch" placeholder="조회할 CAS No. 입력 (예: 67-64-1)" style="flex:1;min-width:200px">
+        <button type="button" class="green" id="modalLookupBtn">KOSHA 조회</button>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        CAS No. 입력 후 조회하면 <code>https://msds.kosha.or.kr/MSDSInfo/</code> 및 연동 조회 API 기준으로 항목을 자동 채웁니다. 브라우저 CORS 정책으로 직접 조회가 차단될 경우 값을 직접 입력해 추가하세요.
+      </div>
+      <div id="modalStatus" class="status"></div>
+    </div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label for="m_chem_name">화학물질명(필수) <span class="req">*</span></label>
+        <input id="m_chem_name" placeholder="예: 아세톤">
+      </div>
+      <div class="field">
+        <label for="m_cas">CAS번호</label>
+        <input id="m_cas" placeholder="예: 67-64-1">
+      </div>
+      <div class="field">
+        <label for="m_twa_ppm">TWA(ppm)값</label>
+        <input id="m_twa_ppm" placeholder="예: 500">
+      </div>
+      <div class="field">
+        <label for="m_twa_mg">TWA(mg)값</label>
+        <input id="m_twa_mg" placeholder="예: 1188">
+      </div>
+      <div class="field">
+        <label for="m_h_code">H-CODE값</label>
+        <input id="m_h_code" placeholder="예: H225, H319, H336">
+      </div>
+      <div class="field">
+        <label for="m_h_grade">H-CODE등급</label>
+        <input id="m_h_grade" placeholder="H-CODE 입력 시 자동 계산(수정 가능)">
+      </div>
+      <div class="field">
+        <label for="m_cmr_c">CMR_C값</label>
+        <input id="m_cmr_c" placeholder="발암성(C) 값 입력">
+      </div>
+      <div class="field">
+        <label for="m_cmr_m">CMR_M값</label>
+        <input id="m_cmr_m" placeholder="변이원성(M) 값 입력">
+      </div>
+      <div class="field">
+        <label for="m_cmr_r">CMR_R값</label>
+        <input id="m_cmr_r" placeholder="생식독성(R) 값 입력">
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" class="secondary" id="clearManualBtn">입력 초기화</button>
+      <button type="button" id="addManualRowBtn">관리표에 추가</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const STORAGE="msds-clean-v1";
+const KOSHA_MSDS_URL="https://msds.kosha.or.kr/MSDSInfo/";
 let rows=[];
 try{rows=JSON.parse(localStorage.getItem(STORAGE)||"[]").map(r=>({...r,selected:r.selected!==false}))}catch(e){rows=[]}
 
@@ -151,76 +237,11 @@ el("deleteSelected").onclick=()=>{
  el("tableStatus").textContent=`선택된 ${selCnt}개 항목을 삭제했습니다.`;
 };
 
-el("upload").onclick=async()=>{
- const f=el("pdf").files[0],process=el("process").value.trim(),product=el("product").value.trim();
- if(!f){el("uploadStatus").textContent="PDF 파일을 선택해 주세요.";return}
- el("uploadStatus").textContent="PDF 분석 중...";
- const fd=new FormData();fd.append("file",f);
- try{
-  const res=await fetch("/api/extract",{method:"POST",body:fd});
-  const data=await res.json();
-  if(!res.ok)throw new Error(data.detail||"PDF 분석 실패");
-  (data.items||[]).forEach(it=>{
-   rows.push({
-    selected:true,
-    process,
-    product,
-    original_name:it.original_name||"",
-    chem_name:"",
-    cas:it.cas||"",
-    twa_ppm:"",
-    twa_mg:"",
-    h_code:"",
-    h_grade:"",
-    cmr_c:"",
-    cmr_m:"",
-    cmr_r:"",
-    boiling_point:""
-   });
-  });
-  save();
-  el("uploadStatus").textContent=`${(data.items||[]).length}개 성분을 추가했습니다.`;
- }catch(e){el("uploadStatus").textContent=e.message}
-};
-
-el("lookupAll").onclick=async()=>{
- const targets=rows.filter(r=>r.selected!==false && (r.cas||"").trim());
- if(!targets.length){el("tableStatus").textContent="조회할 체크된 CAS번호 행이 없습니다.";return}
- for(let n=0;n<targets.length;n++){
-  const r=targets[n];
-  const cas=r.cas.trim();
-  el("tableStatus").textContent=`KOSHA 조회 중 (${n+1}/${targets.length}): ${cas}`;
-  try{
-   const res=await fetch("/api/lookup/"+encodeURIComponent(cas));
-   const d=await res.json();
-   if(!res.ok)throw new Error(d.detail||"조회 실패");
-   r.chem_name=d.chem_name||"";
-   r.twa_ppm=d.twa_ppm||"";
-   r.twa_mg=d.twa_mg||"";
-   r.h_code=d.h_code||"";
-   r.h_grade=d.h_grade||calcGrade(d.h_code);
-   r.cmr_c=d.cmr_c||"";
-   r.cmr_m=d.cmr_m||"";
-   r.cmr_r=d.cmr_r||"";
-   r.boiling_point=(r.twa_ppm||"").trim()?(d.boiling_point||""):"";
-  }catch(e){
-   r.chem_name="오류: "+e.message;
-  }
-  save();
- }
- el("tableStatus").textContent="선택 행 KOSHA 조회가 완료되었습니다.";
-};
-
-async function download(kind){
- refreshGrades();
- const res=await fetch("/api/export/"+kind,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rows})});
- if(!res.ok){const d=await res.json();alert(d.detail||"내보내기 실패");return}
- const blob=await res.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");
- a.href=url;a.download="msds_result."+kind;a.click();URL.revokeObjectURL(url);
-}
-el("xlsx").onclick=()=>download("xlsx");
-el("pdfout").onclick=()=>download("pdf");
-
-fetch("/api/health").then(r=>r.json()).then(d=>{el("keyStatus").textContent=d.kosha_key_configured?"등록됨":"미등록"}).catch(()=>{el("keyStatus").textContent="확인 불가"});
-render();
-</script></body></html>
+/* KOSHA 조회 공통 함수 (백엔드 API 우선 -> msds.kosha.or.kr/MSDSInfo/ 직접 시도 폴백) */
+function parseKoshaHtml(htmlText, casNo){
+ const doc=new DOMParser().parseFromString(htmlText,"text/html");
+ const text=doc.body?doc.body.textContent.replace(/\s+/g," ").trim():"";
+ const hMatches=Array.from(new Set(text.match(/\bH\d{3}\b/g)||[]));
+ const ppmMatch=text.match(/TWA[^0-9\-]*([0-9]+(?:\.[0-9]+)?)\s*ppm/i);
+ const mgMatch=text.match(/TWA[^0-9\-]*([0-9]+(?:\.[0-9]+)?)\s*mg/i);
+ const cmrCMatch=text.match(/발암성[^\n:]*[:\s]+([A-Za-z0-9가-힣\-\s
