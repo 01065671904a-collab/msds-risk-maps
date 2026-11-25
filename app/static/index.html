@@ -24,7 +24,6 @@ td .wide{min-width:140px}
 .warning{background:#fff8e9;border:1px solid #f1dfb8;border-radius:9px;padding:12px;font-size:12px;line-height:1.6}
 a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 
-/* 보조 화면(모달) 스타일 */
 .modal-backdrop{position:fixed;inset:0;background:#10222c88;display:none;align-items:center;justify-content:center;padding:16px;z-index:1000}
 .modal-backdrop.open{display:flex}
 .modal-card{background:white;border:1px solid var(--line);border-radius:14px;width:100%;max-width:780px;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 12px 32px #10222c33}
@@ -116,7 +115,6 @@ a{color:#0a706a}footer{font-size:11px;color:var(--muted);padding:15px 0 30px}
 <footer>무료 공개형 웹사이트 · 로그인 없이 이용 가능합니다. KOSHA 자료는 작성·검토 참고용이며 공급자 MSDS 및 관련 법령을 최종 확인하시기 바랍니다.</footer>
 </main>
 
-<!-- 보조 화면: CAS No. 조회 및 성분 직접 입력 모달 -->
 <div id="manualModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal-card">
     <div class="modal-head">
@@ -237,11 +235,244 @@ el("deleteSelected").onclick=()=>{
  el("tableStatus").textContent=`선택된 ${selCnt}개 항목을 삭제했습니다.`;
 };
 
-/* KOSHA 조회 공통 함수 (백엔드 API 우선 -> msds.kosha.or.kr/MSDSInfo/ 직접 시도 폴백) */
 function parseKoshaHtml(htmlText, casNo){
  const doc=new DOMParser().parseFromString(htmlText,"text/html");
  const text=doc.body?doc.body.textContent.replace(/\s+/g," ").trim():"";
  const hMatches=Array.from(new Set(text.match(/\bH\d{3}\b/g)||[]));
  const ppmMatch=text.match(/TWA[^0-9\-]*([0-9]+(?:\.[0-9]+)?)\s*ppm/i);
  const mgMatch=text.match(/TWA[^0-9\-]*([0-9]+(?:\.[0-9]+)?)\s*mg/i);
- const cmrCMatch=text.match(/발암성[^\n:]*[:\s]+([A-Za-z0-9가-힣\-\s
+ const cmrCMatch=text.match(/발암성[^\n:]*[:\s]+([A-Za-z0-9가-힣\-\s/]{1,20})/);
+ const cmrMMatch=text.match(/변이원성[^\n:]*[:\s]+([A-Za-z0-9가-힣\-\s/]{1,20})/);
+ const cmrRMatch=text.match(/생식독성[^\n:]*[:\s]+([A-Za-z0-9가-힣\-\s/]{1,20})/);
+ const bpMatch=text.match(/끓는점[^\n:]*[:\s]+([\-0-9]+(?:\.[0-9]+)?)/);
+
+ let chemName="";
+ const titleEl=doc.querySelector("table td, .chem-name, h3, h4");
+ if(titleEl) chemName=titleEl.textContent.trim();
+
+ const hCodeStr=hMatches.join(", ");
+ return {
+  chem_name:chemName,
+  cas:casNo,
+  twa_ppm:ppmMatch?ppmMatch[1]:"",
+  twa_mg:mgMatch?mgMatch[1]:"",
+  h_code:hCodeStr,
+  h_grade:calcGrade(hCodeStr),
+  cmr_c:cmrCMatch?cmrCMatch[1].trim():"",
+  cmr_m:cmrMMatch?cmrMMatch[1].trim():"",
+  cmr_r:cmrRMatch?cmrRMatch[1].trim():"",
+  boiling_point:bpMatch?bpMatch[1]:""
+ };
+}
+
+async function fetchKoshaByCas(casNo){
+ const cleanCas=String(casNo||"").trim();
+ if(!cleanCas)throw new Error("CAS No.를 입력해 주세요.");
+
+ try{
+  const res=await fetch("/api/lookup/"+encodeURIComponent(cleanCas));
+  if(res.ok){
+   const d=await res.json();
+   return {...d,cas:d.cas||cleanCas,source:"api"};
+  }
+ }catch(e){}
+
+ try{
+  const directUrl=`${KOSHA_MSDS_URL}?casNo=${encodeURIComponent(cleanCas)}`;
+  const directRes=await fetch(directUrl,{method:"GET",mode:"cors"});
+  if(!directRes.ok)throw new Error(`KOSHA 응답 오류 (${directRes.status})`);
+  const html=await directRes.text();
+  const parsed=parseKoshaHtml(html,cleanCas);
+  return {...parsed,source:"kosha_direct"};
+ }catch(err){
+  throw new Error("브라우저 보안(CORS) 정책 또는 네트워크로 인해 msds.kosha.or.kr 직접 조회가 차단되었습니다. 항목을 직접 입력해 주세요.");
+ }
+}
+
+let hGradeManualOverride=false;
+
+function openManualModal(){
+ el("modalStatus").textContent="";
+ el("manualModal").classList.add("open");
+ el("modalCasSearch").focus();
+}
+
+function closeManualModal(){
+ el("manualModal").classList.remove("open");
+}
+
+function clearManualFields(){
+ ["modalCasSearch","m_chem_name","m_cas","m_twa_ppm","m_twa_mg","m_h_code","m_h_grade","m_cmr_c","m_cmr_m","m_cmr_r"].forEach(id=>{
+  el(id).value="";
+ });
+ hGradeManualOverride=false;
+ el("modalStatus").textContent="";
+}
+
+el("openManualModal").onclick=openManualModal;
+el("closeManualModal").onclick=closeManualModal;
+el("clearManualBtn").onclick=clearManualFields;
+el("manualModal").addEventListener("click",e=>{
+ if(e.target===el("manualModal"))closeManualModal();
+});
+document.addEventListener("keydown",e=>{
+ if(e.key==="Escape" && el("manualModal").classList.contains("open"))closeManualModal();
+});
+
+el("m_h_code").addEventListener("input",()=>{
+ if(!hGradeManualOverride){
+  el("m_h_grade").value=calcGrade(el("m_h_code").value);
+ }
+});
+el("m_h_grade").addEventListener("input",()=>{
+ hGradeManualOverride=el("m_h_grade").value.trim().length>0;
+});
+
+async function runModalLookup(){
+ const casInput=el("modalCasSearch").value.trim() || el("m_cas").value.trim();
+ if(!casInput){
+  el("modalStatus").textContent="조회할 CAS No.를 입력해 주세요.";
+  return;
+ }
+ el("modalCasSearch").value=casInput;
+ el("m_cas").value=casInput;
+ el("modalLookupBtn").disabled=true;
+ el("modalStatus").textContent=`KOSHA (${KOSHA_MSDS_URL})에서 CAS No. [${casInput}] 조회 중...`;
+
+ try{
+  const d=await fetchKoshaByCas(casInput);
+  if(d.chem_name) el("m_chem_name").value=d.chem_name;
+  el("m_cas").value=d.cas||casInput;
+  if(d.twa_ppm!==undefined && d.twa_ppm!=="") el("m_twa_ppm").value=d.twa_ppm;
+  if(d.twa_mg!==undefined && d.twa_mg!=="") el("m_twa_mg").value=d.twa_mg;
+  if(d.h_code!==undefined && d.h_code!=="") el("m_h_code").value=d.h_code;
+  const computedGrade=d.h_grade || calcGrade(el("m_h_code").value);
+  el("m_h_grade").value=computedGrade;
+  hGradeManualOverride=false;
+  if(d.cmr_c!==undefined && d.cmr_c!=="") el("m_cmr_c").value=d.cmr_c;
+  if(d.cmr_m!==undefined && d.cmr_m!=="") el("m_cmr_m").value=d.cmr_m;
+  if(d.cmr_r!==undefined && d.cmr_r!=="") el("m_cmr_r").value=d.cmr_r;
+  el("modalStatus").textContent=`조회 완료 (${d.source==="api"?"내부 조회 API":"KOSHA MSDSInfo"}): 값을 확인한 뒤 [관리표에 추가]를 누르세요.`;
+ }catch(e){
+  el("modalStatus").textContent=e.message;
+ }finally{
+  el("modalLookupBtn").disabled=false;
+ }
+}
+
+el("modalLookupBtn").onclick=runModalLookup;
+el("modalCasSearch").addEventListener("keydown",e=>{
+ if(e.key==="Enter"){e.preventDefault();runModalLookup()}
+});
+
+el("addManualRowBtn").onclick=()=>{
+ const chemName=el("m_chem_name").value.trim();
+ if(!chemName){
+  el("modalStatus").textContent="화학물질명(필수)을 입력해 주세요.";
+  el("m_chem_name").focus();
+  return;
+ }
+ const casVal=(el("m_cas").value.trim() || el("modalCasSearch").value.trim());
+ const twaPpmVal=el("m_twa_ppm").value.trim();
+ const twaMgVal=el("m_twa_mg").value.trim();
+ const hCodeVal=el("m_h_code").value.trim();
+ const hGradeVal=el("m_h_grade").value.trim() || calcGrade(hCodeVal);
+ const cmrCVal=el("m_cmr_c").value.trim();
+ const cmrMVal=el("m_cmr_m").value.trim();
+ const cmrRVal=el("m_cmr_r").value.trim();
+
+ rows.push({
+  selected:true,
+  process:el("process").value.trim(),
+  product:el("product").value.trim(),
+  original_name:"",
+  chem_name:chemName,
+  cas:casVal,
+  twa_ppm:twaPpmVal,
+  twa_mg:twaMgVal,
+  h_code:hCodeVal,
+  h_grade:hGradeVal,
+  cmr_c:cmrCVal,
+  cmr_m:cmrMVal,
+  cmr_r:cmrRVal,
+  boiling_point:""
+ });
+ save();
+ el("tableStatus").textContent=`직접 입력 성분 [${chemName}] 행이 관리표에 추가되었습니다.`;
+ clearManualFields();
+ closeManualModal();
+};
+
+el("upload").onclick=async()=>{
+ const f=el("pdf").files[0],process=el("process").value.trim(),product=el("product").value.trim();
+ if(!f){el("uploadStatus").textContent="PDF 파일을 선택해 주세요.";return}
+ el("uploadStatus").textContent="PDF 분석 중...";
+ const fd=new FormData();fd.append("file",f);
+ try{
+  const res=await fetch("/api/extract",{method:"POST",body:fd});
+  const data=await res.json();
+  if(!res.ok)throw new Error(data.detail||"PDF 분석 실패");
+  (data.items||[]).forEach(it=>{
+   rows.push({
+    selected:true,
+    process,
+    product,
+    original_name:it.original_name||"",
+    chem_name:"",
+    cas:it.cas||"",
+    twa_ppm:"",
+    twa_mg:"",
+    h_code:"",
+    h_grade:"",
+    cmr_c:"",
+    cmr_m:"",
+    cmr_r:"",
+    boiling_point:""
+   });
+  });
+  save();
+  el("uploadStatus").textContent=`${(data.items||[]).length}개 성분을 추가했습니다.`;
+ }catch(e){el("uploadStatus").textContent=e.message}
+};
+
+el("lookupAll").onclick=async()=>{
+ const targets=rows.filter(r=>r.selected!==false && (r.cas||"").trim());
+ if(!targets.length){el("tableStatus").textContent="조회할 체크된 CAS번호 행이 없습니다.";return}
+ for(let n=0;n<targets.length;n++){
+  const r=targets[n];
+  const cas=r.cas.trim();
+  el("tableStatus").textContent=`KOSHA 조회 중 (${n+1}/${targets.length}): ${cas}`;
+  try{
+   const res=await fetch("/api/lookup/"+encodeURIComponent(cas));
+   const d=await res.json();
+   if(!res.ok)throw new Error(d.detail||"조회 실패");
+   r.chem_name=d.chem_name||"";
+   r.twa_ppm=d.twa_ppm||"";
+   r.twa_mg=d.twa_mg||"";
+   r.h_code=d.h_code||"";
+   r.h_grade=d.h_grade||calcGrade(d.h_code);
+   r.cmr_c=d.cmr_c||"";
+   r.cmr_m=d.cmr_m||"";
+   r.cmr_r=d.cmr_r||"";
+   r.boiling_point=(r.twa_ppm||"").trim()?(d.boiling_point||""):"";
+  }catch(e){
+   r.chem_name="오류: "+e.message;
+  }
+  save();
+ }
+ el("tableStatus").textContent="선택 행 KOSHA 조회가 완료되었습니다.";
+};
+
+async function download(kind){
+ refreshGrades();
+ const res=await fetch("/api/export/"+kind,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rows})});
+ if(!res.ok){const d=await res.json();alert(d.detail||"내보내기 실패");return}
+ const blob=await res.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download="msds_result."+kind;a.click();URL.revokeObjectURL(url);
+}
+el("xlsx").onclick=()=>download("xlsx");
+el("pdfout").onclick=()=>download("pdf");
+
+fetch("/api/health").then(r=>r.json()).then(d=>{el("keyStatus").textContent=d.kosha_key_configured?"등록됨":"미등록"}).catch(()=>{el("keyStatus").textContent="확인 불가"});
+render();
+</script></body></html>
